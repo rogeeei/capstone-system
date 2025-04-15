@@ -12,7 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('users', function (Blueprint $table) {
-            $table->string('user_id')->primary(); // Custom ID is a primary key
+            $table->string('user_id')->primary(); 
+             $table->string('username');
             $table->string('firstname');
             $table->string('middle_name')->nullable();
             $table->string('lastname');
@@ -21,11 +22,12 @@ return new class extends Migration
             $table->string('phone_number')->unique();
             $table->date('birthdate')->nullable();
             $table->string('brgy');
+            $table->string('purok');
+            $table->string('municipality');
+            $table->string('province');
             $table->enum('role', ['super_admin', 'admin', 'user']);
             $table->string('image_path')->nullable();
             $table->boolean('approved')->default(false);
-            $table->string('bhc_name')->nullable(); 
-            $table->string('bhc_address')->nullable();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->rememberToken();

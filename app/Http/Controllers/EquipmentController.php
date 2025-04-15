@@ -7,6 +7,7 @@ use App\Models\Equipment;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use App\Models\User; 
 
 
 class EquipmentController extends Controller
@@ -48,45 +49,51 @@ public function updateEquipmentStock(Request $request, $equipment_id): JsonRespo
 public function getEquipmentByBarangay()
 {
     try {
-        \Log::info("Fetching equipment by barangay...");
+        \Log::info("Fetching equipment by barangay with full location...");
 
         // ✅ Check if Equipment Table is Empty
         if (Equipment::count() === 0) {
             return response()->json(["message" => "No equipment data exists."], 200);
         }
 
-        // ✅ Fetch equipment grouped by barangay
-        $equipmentByBarangay = Equipment::leftJoin('users', 'equipment.user_id', '=', 'users.user_id')
+        // ✅ Join with users and group by location
+        $equipmentByBarangay = User::join('equipment', 'users.user_id', '=', 'equipment.user_id')
             ->select(
                 'users.brgy as barangay',
+                'users.municipality as municipality',
+                'users.province as province',
                 'equipment.name as equipment_name',
                 DB::raw('SUM(equipment.quantity) as total_quantity')
             )
-            ->whereNotNull('users.brgy') 
-            ->groupBy('users.brgy', 'equipment.name')
+            ->whereNotNull('users.brgy')
+            ->groupBy(
+                'users.brgy',
+                'users.municipality',
+                'users.province',
+                'equipment.name'
+            )
             ->orderBy('users.brgy')
             ->get();
-
-        // ✅ Log fetched data
-        \Log::info("Equipment data retrieved:", ['data' => $equipmentByBarangay]);
 
         if ($equipmentByBarangay->isEmpty()) {
             return response()->json(["message" => "No equipment found in any barangay."], 200);
         }
 
-        // ✅ Transform the data into a structured format
+        // ✅ Group and structure the data
         $groupedData = [];
         foreach ($equipmentByBarangay as $item) {
-            $barangay = $item->barangay ?? 'Unknown'; // ✅ Handle null barangays
+            $key = $item->barangay . '|' . $item->municipality . '|' . $item->province;
 
-            if (!isset($groupedData[$barangay])) {
-                $groupedData[$barangay] = [
-                    'barangay' => ucfirst($barangay),
+            if (!isset($groupedData[$key])) {
+                $groupedData[$key] = [
+                    'barangay' => $item->barangay,
+                    'municipality' => $item->municipality,
+                    'province' => $item->province,
                     'equipment' => [],
                 ];
             }
 
-            $groupedData[$barangay]['equipment'][] = [
+            $groupedData[$key]['equipment'][] = [
                 'name' => $item->equipment_name,
                 'total_quantity' => $item->total_quantity,
             ];
@@ -103,22 +110,37 @@ public function getEquipmentByBarangay()
 }
 
 
-
-
-
-    public function index()
+public function index(Request $request)
 {
-    // Get the authenticated user's ID and barangay (brgy) from the users table
-    $userId = auth()->user()->user_id;  // Assuming you're using user_id as the unique identifier
+    // Get the authenticated user's barangay (brgy)
     $userBarangay = auth()->user()->brgy;  // Get the user's barangay
 
-    // Retrieve equipment created by the authenticated user and belonging to the same barangay
-    $equipment = Equipment::where('user_id', $userId)  // Only fetch equipment created by the logged-in user
-                          ->whereHas('user', function($query) use ($userBarangay) {
-                              // Ensure the equipment belongs to the same barangay as the logged-in user
-                              $query->where('brgy', $userBarangay);  
-                          })
-                          ->get();
+    // Retrieve equipment created by users from the same barangay
+    $query = Equipment::whereHas('user', function($query) use ($userBarangay) {
+        // Ensure the equipment belongs to the same barangay as the logged-in user
+        $query->where('brgy', $userBarangay);
+    });
+
+    // If a search query is provided, filter the equipment based on search
+    if ($request->has('search') && !empty($request->search)) {
+        $searchTerm = $request->search;
+
+        $query->where(function ($q) use ($searchTerm) {
+            $q->where('equipment_id', 'LIKE', '%' . $searchTerm . '%')
+              ->orWhere('name', 'LIKE', '%' . $searchTerm . '%')
+              ->orWhere('quantity', 'LIKE', '%' . $searchTerm . '%')
+              ->orWhere('condition', 'LIKE', '%' . $searchTerm . '%')
+              ->orWhere('date_acquired', 'LIKE', '%' . $searchTerm . '%');
+        });
+    }
+
+    // Sorting by column and order (with defaults)
+    $column = $request->input('column', 'name');  // Default to sorting by 'name'
+    $order = $request->input('order', 'asc');     // Default to ascending order
+    $query->orderBy($column, $order);
+
+    // Retrieve the filtered and sorted equipment
+    $equipment = $query->get();
 
     // Return the equipment data as a JSON response
     return response()->json($equipment);

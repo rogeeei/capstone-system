@@ -19,6 +19,7 @@ class Services extends Model
 
     protected $fillable = [
         'name',
+        'icon',
         'description'
     ];
 
@@ -41,6 +42,11 @@ public function transactions()
  public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id', 'user_id'); // 🔥 Ensure correct column
+    }
+
+     public function barangays()
+    {
+        return $this->belongsToMany(User::class, 'barangay_services', 'service_id', 'brgy', 'id', 'brgy');
     }
 
 }

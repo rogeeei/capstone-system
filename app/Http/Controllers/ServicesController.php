@@ -51,20 +51,20 @@ public function getServices()
 
 public function getServicesByBarangay()
 {
-    // ✅ Get the authenticated user
-    $user = Auth::user();
-    
-    if (!$user || !$user->brgy) {
-        return response()->json(['message' => 'User barangay not found.'], 404);
-    }
+    $userBarangay = auth()->user()->brgy; // Get the logged-in user's barangay
 
-    // ✅ Fetch only services created by users in the same barangay
-    $services = Services::whereHas('user', function ($query) use ($user) {
-        $query->where('brgy', $user->brgy);
-    })->get();
+    // Retrieve services assigned to the user's barangay
+    $services = DB::table('barangay_services')
+        ->join('services', 'barangay_services.service_id', '=', 'services.id')
+        ->where('barangay_services.brgy', $userBarangay)
+        ->select('services.id', 'services.name', 'services.icon') // ✅ Select the icon too
+        ->get();
 
-    return response()->json($services, 200);
+    return response()->json($services);
 }
+
+
+
 public function getCitizenServicesByBarangay(Request $request)
 {
     // ✅ Get the barangay from the query parameter
@@ -83,26 +83,82 @@ public function getCitizenServicesByBarangay(Request $request)
     return response()->json($services, 200);
 }
 
-         public function store(Request $request)
-    {
-        // ✅ Validate input
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-        ]);
+public function store(Request $request)
+{
+  $request->validate([
+    'services' => 'required|array|min:1',
+    'services.*.name' => 'required|string|max:255',
+    'services.*.description' => 'nullable|string',
+    'services.*.icon' => 'nullable|string',
+]);
 
-        // ✅ Create a new service and assign user_id
+
+    // ✅ Get authenticated user
+    $user = Auth::user();
+    if (!$user || $user->role !== 'super_admin') {
+        return response()->json(['message' => 'Unauthorized - Only super admins can create services'], 403);
+    }
+
+    // ✅ Store each service
+    $createdServices = [];
+    foreach ($request->services as $serviceData) {
         $service = new Services();
-        $service->name = $request->name;
-        $service->description = $request->description;
-        $service->user_id = Auth::user()->user_id; // ✅ Assign logged-in user's user_id
+        $service->name = $serviceData['name'];
+        $service->description = $serviceData['description'] ?? null;
+        $service->icon = $serviceData['icon'] ?? null;
         $service->save();
 
-        return response()->json([
-            'message' => 'Service created successfully!',
-            'service' => $service
-        ], 201);
+        $createdServices[] = $service;
     }
+
+    return response()->json([
+        'message' => 'Services created successfully!',
+        'services' => $createdServices
+    ], 201);
+}
+
+
+public function assignServiceToBarangay(Request $request)
+{
+    $request->validate([
+        'services' => 'required|array|min:1',
+        'services.*.service_id' => 'required|exists:services,id',
+    ]);
+
+    $user = Auth::user();
+    if (!$user) {
+        return response()->json(['message' => 'Unauthorized'], 401);
+    }
+
+    $barangay = $user->brgy;
+    if (!$barangay) {
+        return response()->json(['message' => 'User has no assigned barangay'], 400);
+    }
+
+    foreach ($request->services as $serviceData) {
+        $serviceId = $serviceData['service_id'];
+
+        // Check if the service is already assigned to the barangay
+        $exists = DB::table('barangay_services')
+            ->where('brgy', $barangay)
+            ->where('service_id', $serviceId)
+            ->exists();
+
+        if (!$exists) {
+            DB::table('barangay_services')->insert([
+                'brgy' => $barangay,
+                'service_id' => $serviceId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+    }
+
+    return response()->json(['message' => 'Services assigned successfully']);
+}
+
+
+    
     /**
      * Show the service summary.
      *
@@ -141,4 +197,17 @@ public function getCitizenServicesByBarangay(Request $request)
 
         return $services;
     }
+
+    
+public function getServiceAvailmentStats()
+{
+    $serviceStats = DB::table('transactions')
+        ->join('services', 'transactions.service_id', '=', 'services.id')
+        ->select('services.name', DB::raw('COUNT(DISTINCT transactions.citizen_id) as citizen_count'))
+        ->groupBy('services.name')
+        ->get();
+
+    return response()->json($serviceStats);
+}
+
 }

@@ -195,16 +195,21 @@ public function getTransaction(string $citizenId)
 
 public function store(CitizenDetailsRequest $request)
 {
-    // Validate the incoming request
+    // ✅ Get the authenticated user
+    $user = auth()->user();
+
+    if (!$user) {
+        return response()->json(['error' => 'Unauthorized'], 401);
+    }
+
+    // ✅ Validate the incoming request (excluding municipality & province)
     $validated = $request->validate([
         'firstname' => 'required|string',
         'middle_name' => 'nullable|string|max:255',
         'lastname' => 'required|string',
         'suffix' => 'nullable|string',
         'purok' => 'required|string',
-        'barangay' => 'required|string',
-        'municipality' => 'required|string',
-        'province' => 'required|string',
+        'barangay' => 'required|string', // Keep barangay input since users manage their own barangay
         'date_of_birth' => 'required|date|date_format:Y-m-d',
         'gender' => 'required|string',
         'blood_type' => 'nullable|string',
@@ -216,7 +221,11 @@ public function store(CitizenDetailsRequest $request)
         'emergency_contact_no' => 'required|string',
     ]);
 
-    // Check if citizen already exists based on provided fields
+    // ✅ Automatically set the user's municipality and province
+    $validated['municipality'] = $user->municipality;
+    $validated['province'] = $user->province;
+
+    // ✅ Check if citizen already exists
     $existingCitizen = CitizenDetails::where('firstname', $validated['firstname'])
         ->where('lastname', $validated['lastname'])
         ->where('middle_name', $validated['middle_name'])
@@ -227,9 +236,8 @@ public function store(CitizenDetailsRequest $request)
         ->where('gender', $validated['gender'])
         ->first();
 
-    // If citizen exists, just add to citizen history and services
     if ($existingCitizen) {
-        // Create the citizen history entry with services availed
+        // ✅ Add to citizen history instead of creating a new record
         $citizenHistory = CitizenHistory::create([
             'citizen_id' => $existingCitizen->citizen_id,
             'firstname' => $existingCitizen->firstname,
@@ -251,26 +259,25 @@ public function store(CitizenDetailsRequest $request)
             'emergency_contact_no' => $existingCitizen->emergency_contact_no,
         ]);
 
-
-        // Return success response for history entry
         return response()->json([
             'citizen_history' => $citizenHistory,
             'isNew' => false, 
         ], 200);
     }
 
-    // If no existing citizen, create a new citizen
+    // ✅ Generate new Citizen ID
     $lastCitizen = CitizenDetails::where('citizen_id', 'like', '200-%')
         ->orderBy('citizen_id', 'desc')
         ->first();
-
+    
     $lastNumber = $lastCitizen ? (int) substr($lastCitizen->citizen_id, 4) : 0;
     $newCitizenId = '200-' . str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
     $validated['citizen_id'] = $newCitizenId;
 
-    // Create the citizen record
+    // ✅ Create a new citizen record
     $citizen = CitizenDetails::create($validated);
-    // Create the citizen history for the new citizen
+
+    // ✅ Add new citizen to history
     $citizenHistory = CitizenHistory::create([
         'citizen_id' => $citizen->citizen_id,
         'firstname' => $citizen->firstname,
@@ -291,13 +298,14 @@ public function store(CitizenDetailsRequest $request)
         'emergency_contact_no' => $citizen->emergency_contact_no,
     ]);
 
-    // Return the response
     return response()->json([
         'citizen' => $citizen,
         'citizen_history' => $citizenHistory,
         'isNew' => !$citizen->exists,
     ], 201);
 }
+
+
 
 
 public function getCitizens()
@@ -319,9 +327,14 @@ public function getCitizensByBarangay(Request $request)
 
     // Check if the user is a super admin
     if ($user->role === 'super_admin') {
-        // Super admin can view all citizens, apply search filter
+        // Super admin can view all citizens, apply search filter across multiple fields
         $citizens = CitizenDetails::with(['services', 'medicines'])
-            ->where('lastname', 'like', "%$query%") // Apply search filter
+            ->where(function ($queryBuilder) use ($query) {
+                $queryBuilder->where('lastname', 'like', "%$query%")
+                             ->orWhere('firstname', 'like', "%$query%")
+                             ->orWhere('gender', 'like', "%$query%")
+                             ->orWhere('barangay', 'like', "%$query%");
+            })
             ->paginate($perPage, ['*'], 'page', $page);
     } else {
         // Other users can only view citizens from their barangay
@@ -337,7 +350,12 @@ public function getCitizensByBarangay(Request $request)
         // Apply barangay filter and search query for non-super admin users
         $citizens = CitizenDetails::with(['services', 'medicines'])
             ->where('barangay', $barangay)
-            ->where('lastname', 'like', "%$query%") // Apply search filter
+            ->where(function ($queryBuilder) use ($query) {
+                $queryBuilder->where('lastname', 'like', "%$query%")
+                             ->orWhere('firstname', 'like', "%$query%")
+                             ->orWhere('gender', 'like', "%$query%")
+                             ->orWhere('barangay', 'like', "%$query%");
+            })
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
@@ -366,6 +384,60 @@ public function getCitizensByBarangay(Request $request)
         'currentPage' => $citizens->currentPage(), // Current page number
     ]);
 }
+
+
+public function getAllUserBarangays()
+{
+    try {
+        // ✅ Get the logged-in user
+        $user = auth()->user();
+
+        // ✅ Ensure the user has a province and municipality assigned
+        if (!$user || !$user->province || !$user->municipality) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User does not have an assigned province and municipality.'
+            ], 403);
+        }
+
+        // ✅ Fetch barangays that belong to the user's province and municipality
+        $barangays = User::whereNotNull('brgy') // Ignore null barangays
+            ->where('approved', true) // ✅ Only include approved users
+            ->where('role', '!=', 'super_admin') // ✅ Exclude super admins
+            ->where('province', $user->province) // ✅ Filter by user’s province
+            ->where('municipality', $user->municipality) // ✅ Filter by user’s municipality
+            ->orderBy('brgy', 'asc') // ✅ Sort alphabetically
+            ->distinct()
+            ->pluck('brgy');
+
+        // ✅ If no barangays found, return a message
+        if ($barangays->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No barangays found in your assigned province and municipality.'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Barangays retrieved successfully for your assigned province and municipality.',
+            'province' => $user->province,
+            'municipality' => $user->municipality,
+            'barangays' => $barangays
+        ]);
+    } catch (\Exception $e) {
+        // ✅ Log error for debugging
+        Log::error("Error fetching barangays for user: " . $e->getMessage());
+
+        return response()->json([
+            'success' => false,
+            'message' => 'An error occurred while retrieving barangays.',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
+
 
 
 
@@ -436,6 +508,50 @@ public function getDistinctBarangays(Request $request)
         'data' => $barangays
     ]);
 }
+
+public function getDistinctProvinces(Request $request)
+{
+    $user = auth()->user();
+
+    if ($user->role === 'super_admin') {
+        $provinces = User::where('role', '!=', 'super_admin')
+            ->where('approved', true)
+            ->whereNotNull('province')
+            ->distinct('province')
+            ->orderBy('province', 'asc')
+            ->pluck('province');
+    } else {
+        $province = $user->province ?? null;
+
+        if (!$province) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User does not have an assigned province.'
+            ], 403);
+        }
+
+        $provinces = User::where('province', $province)
+            ->where('approved', true)
+            ->whereNotNull('province')
+            ->distinct('province')
+            ->pluck('province');
+    }
+
+    if ($provinces->isEmpty()) {
+        return response()->json([
+            'success' => false,
+            'message' => 'No provinces found.',
+        ], 404);
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Provinces retrieved successfully.',
+        'data' => $provinces
+    ]);
+}
+
+
 
     /**
      * Update the specified citizen in the database.
@@ -526,6 +642,220 @@ public function getDistinctBarangays(Request $request)
 ]);
 
 }
+//Report JS
+public function calculateAndGroupBMI()
+{
+    // ✅ Fetch all citizens who have height & weight data
+    $citizens = CitizenDetails::whereNotNull('height')
+        ->whereNotNull('weight')
+        ->get();
+
+    // ✅ Categories for BMI classification
+    $bmiGroups = [
+        'Underweight' => 0,
+        'Normal Weight' => 0,
+        'Overweight' => 0,
+        'Obese' => 0
+    ];
+
+    $citizenBmiData = [];
+
+    foreach ($citizens as $citizen) {
+        // ✅ Convert height and weight to float (ensures calculations work)
+        $height = floatval($citizen->height);
+        $weight = floatval($citizen->weight);
+
+        // ✅ Convert height from cm to meters
+        if ($height > 0) {
+            $heightInMeters = $height / 100;
+        } else {
+            continue; // Skip invalid heights (e.g., 0 or null)
+        }
+
+        // ✅ Calculate BMI
+        $bmi = $weight / ($heightInMeters * $heightInMeters);
+        $bmi = round($bmi, 2); // ✅ Round BMI to 2 decimal places
+
+        // ✅ Determine BMI category
+        if ($bmi < 18.5) {
+            $category = 'Underweight';
+        } elseif ($bmi >= 18.5 && $bmi <= 24.9) {
+            $category = 'Normal Weight';
+        } elseif ($bmi >= 25.0 && $bmi <= 29.9) {
+            $category = 'Overweight';
+        } else {
+            $category = 'Obese';
+        }
+
+        // ✅ Add to category count
+        $bmiGroups[$category]++;
+
+        // ✅ Store citizen data for response
+        $citizenBmiData[] = [
+            'citizen_id' => $citizen->citizen_id,
+            'name' => "{$citizen->firstname} {$citizen->lastname}",
+            'height' => $height . " cm",
+            'weight' => $weight . " kg",
+            'bmi' => $bmi,
+            'category' => $category,
+        ];
+    }
+
+    return response()->json([
+        'message' => 'BMI Calculation and Categorization Successful',
+        'bmi_summary' => $bmiGroups,
+        'citizens_bmi' => $citizenBmiData,
+    ]);
+}
+//Admin Report
+public function calculateAndGroupBMIByBarangay(Request $request)
+{
+    // ✅ Get barangay from the URL parameter
+    $barangay = $request->query('barangay');
+
+    if (!$barangay) {
+        return response()->json(['error' => 'Barangay parameter is required'], 400);
+    }
+
+    // ✅ Fetch all citizens from the given barangay who have height & weight data
+    $citizens = CitizenDetails::where('barangay', $barangay)
+        ->whereNotNull('height')
+        ->whereNotNull('weight')
+        ->get();
+
+    // ✅ Categories for BMI classification
+    $bmiGroups = [
+        'Underweight' => 0,
+        'Normal Weight' => 0,
+        'Overweight' => 0,
+        'Obese' => 0
+    ];
+
+    $citizenBmiData = [];
+
+    foreach ($citizens as $citizen) {
+        // ✅ Convert height and weight to float (ensures calculations work)
+        $height = floatval($citizen->height);
+        $weight = floatval($citizen->weight);
+
+        // ✅ Convert height from cm to meters
+        if ($height > 0) {
+            $heightInMeters = $height / 100;
+        } else {
+            continue; // Skip invalid heights (e.g., 0 or null)
+        }
+
+        // ✅ Calculate BMI
+        $bmi = $weight / ($heightInMeters * $heightInMeters);
+        $bmi = round($bmi, 2); // ✅ Round BMI to 2 decimal places
+
+        // ✅ Determine BMI category
+        if ($bmi < 18.5) {
+            $category = 'Underweight';
+        } elseif ($bmi >= 18.5 && $bmi <= 24.9) {
+            $category = 'Normal Weight';
+        } elseif ($bmi >= 25.0 && $bmi <= 29.9) {
+            $category = 'Overweight';
+        } else {
+            $category = 'Obese';
+        }
+
+        // ✅ Add to category count
+        $bmiGroups[$category]++;
+
+        // ✅ Store citizen data for response
+        $citizenBmiData[] = [
+            'citizen_id' => $citizen->citizen_id,
+            'name' => "{$citizen->firstname} {$citizen->lastname}",
+            'height' => $height . " cm",
+            'weight' => $weight . " kg",
+            'bmi' => $bmi,
+            'category' => $category,
+        ];
+    }
+
+    return response()->json([
+        'message' => "BMI Calculation for Barangay: $barangay",
+        'barangay' => $barangay,
+        'bmi_summary' => $bmiGroups,
+        'citizens_bmi' => $citizenBmiData,
+    ]);
+}
+
+public function calculateAndGroupBMIForUserBarangay()
+{
+    // ✅ Get the barangay of the logged-in user
+    $userBarangay = auth()->user()->brgy; 
+
+    if (!$userBarangay) {
+        return response()->json(['error' => 'User barangay not found'], 400);
+    }
+
+    // ✅ Fetch all citizens from the user's barangay who have height & weight data
+    $citizens = CitizenDetails::where('barangay', $userBarangay)
+        ->whereNotNull('height')
+        ->whereNotNull('weight')
+        ->get();
+
+    // ✅ Categories for BMI classification
+    $bmiGroups = [
+        'Underweight' => 0,
+        'Normal Weight' => 0,
+        'Overweight' => 0,
+        'Obese' => 0
+    ];
+
+    $citizenBmiData = [];
+
+    foreach ($citizens as $citizen) {
+        // ✅ Convert height and weight to float
+        $height = floatval($citizen->height);
+        $weight = floatval($citizen->weight);
+
+        // ✅ Convert height from cm to meters
+        if ($height > 0) {
+            $heightInMeters = $height / 100;
+        } else {
+            continue; // Skip invalid heights (e.g., 0 or null)
+        }
+
+        // ✅ Calculate BMI
+        $bmi = $weight / ($heightInMeters * $heightInMeters);
+        $bmi = round($bmi, 2);
+
+        // ✅ Determine BMI category
+        if ($bmi < 18.5) {
+            $category = 'Underweight';
+        } elseif ($bmi >= 18.5 && $bmi <= 24.9) {
+            $category = 'Normal Weight';
+        } elseif ($bmi >= 25.0 && $bmi <= 29.9) {
+            $category = 'Overweight';
+        } else {
+            $category = 'Obese';
+        }
+
+        // ✅ Add to category count
+        $bmiGroups[$category]++;
+
+        // ✅ Store citizen data for response
+        $citizenBmiData[] = [
+            'citizen_id' => $citizen->citizen_id,
+            'name' => "{$citizen->firstname} {$citizen->lastname}",
+            'height' => $height . " cm",
+            'weight' => $weight . " kg",
+            'bmi' => $bmi,
+            'category' => $category,
+        ];
+    }
+
+    return response()->json([
+        'message' => "BMI Calculation for User's Barangay: $userBarangay",
+        'barangay' => $userBarangay,
+        'bmi_summary' => $bmiGroups,
+        'citizens_bmi' => $citizenBmiData,
+    ]);
+}
+
 
 
 

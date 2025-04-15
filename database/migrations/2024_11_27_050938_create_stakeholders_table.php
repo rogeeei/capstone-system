@@ -9,18 +9,21 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up(): void
-    {
-        Schema::create('stakeholders', function (Blueprint $table) {
-            $table->id(); 
-            $table->string('agency_name'); 
-            $table->text('purok');
-            $table->text('barangay');
-            $table->text('municipality');
-            $table->text('province');
-            $table->timestamps(); 
-        });
-    }
+    public function up()
+{
+    Schema::create('stakeholders', function (Blueprint $table) {
+        $table->id();
+        $table->text('barangay');
+        $table->text('municipality');
+        $table->text('province');
+        $table->boolean('is_approved')->default(false);
+        $table->string('username'); 
+        $table->string('password');
+        $table->rememberToken();
+        $table->timestamps();
+    });
+}
+
 
     /**
      * Reverse the migrations.

@@ -13,7 +13,7 @@ return new class extends Migration
     {
         // Create the citizen_history table
         Schema::create('citizen_history', function (Blueprint $table) {
-            $table->id('citizen_history_id'); // Primary key
+            $table->id('citizen_history_id'); 
             $table->string('firstname');
             $table->string('middle_name')->nullable();
             $table->string('lastname');
@@ -30,13 +30,13 @@ return new class extends Migration
             $table->string('medication')->nullable();
             $table->string('emergency_contact_name');
             $table->string('emergency_contact_no');
-            $table->string('citizen_id'); // Foreign key to citizen_details table
+            $table->string('citizen_id'); 
             $table->date('date')->nullable();
             $table->timestamps();
 
             // Foreign key constraint
             $table->foreign('citizen_id')
-                  ->references('citizen_id') // Match the existing primary key in citizen_details table
+                  ->references('citizen_id')
                   ->on('citizen_details') 
                   ->onDelete('cascade');
 

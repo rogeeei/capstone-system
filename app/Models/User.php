@@ -37,12 +37,16 @@ class User extends Authenticatable
         'phone_number',
         'birthdate',
         'brgy',
+        'purok',
+        'municipality',
+        'province',
         'role',
         'image_path',
         'approved',
-        'bhc_name',
-        'bhc_address',
+        'username',
         'password',
+        'confirmed_password',
+
         
     ];
 
@@ -60,7 +64,10 @@ public function medicines()
 {
     return $this->hasMany(Medicine::class, 'user_id', 'user_id');
 }
-
+ public function services()
+    {
+        return $this->belongsToMany(Service::class, 'barangay_services', 'brgy', 'service_id', 'brgy', 'id');
+    }
 
 
     /**

@@ -12,7 +12,7 @@ class SuperAdminSeeder extends Seeder
     /**
      * Run the database seeds.
      */
-   public function run()
+  public function run()
     {
         // Check if a super admin already exists
         if (User::where('role', 'super_admin')->exists()) {
@@ -22,17 +22,21 @@ class SuperAdminSeeder extends Seeder
         // Create the super admin user
         User::create([
             'user_id' => 'superadmin001', 
+            'username' => 'healthy-barrio@superadmin',
             'firstname' => 'Super',
             'middle_name' => 'User',
             'lastname' => 'Admin',
-            'suffix' => '',
+            'suffix' => null, 
             'email' => 'superadmin@example.com',
             'phone_number' => '1234567890',
             'birthdate' => '2007-07-28',
-            'brgy' => 'Cabadbaran',
+            'brgy' => 'N/A',
+            'purok' => 'N/A',
+            'municipality' => 'N/A',
+            'province' => 'N/A',
             'role' => 'super_admin', 
-            'password' => Hash::make('superadminpassword'), 
-            'approved' => true,
+            'password' => Hash::make('superadminpassword'),
+            'approved' => true, 
         ]);
     }
 }

@@ -12,90 +12,96 @@ use Illuminate\Support\Facades\Log;
 
 class MedicineController extends Controller
 {
- public function index()
+public function index()
 {
-    $userId = auth()->user()->user_id;  
-    $userBarangay = auth()->user()->brgy;  
+    $userBarangay = auth()->user()->brgy; // Get authenticated user's barangay
 
-    // Retrieve medicines created by the authenticated user and belonging to the same barangay
-    $medicines = Medicine::where('user_id', $userId) 
-                         ->whereHas('user', function($query) use ($userBarangay) {
-                             $query->where('brgy', $userBarangay);  
-                         })
-                         ->get();
+    // ✅ Retrieve all medicines where ANY user from the same barangay created them
+    $medicines = Medicine::whereHas('user', function ($query) use ($userBarangay) {
+        $query->where('users.brgy', $userBarangay); // Fetch by barangay
+    })->get();
 
-    // Loop through each medicine and update status based on quantity
-    foreach ($medicines as $medicine) {
-        if ($medicine->quantity > 0) {
-            $medicine->medicine_status = 'Available';
-        } else {
-            $medicine->medicine_status = 'Out of Stock';
-        }
-        $medicine->save(); // Save each medicine after updating status
-    }
+    // ✅ Modify `medicine_status` dynamically (DO NOT save in DB inside GET requests)
+    $medicines->transform(function ($medicine) {
+        $medicine->medicine_status = $medicine->quantity > 0 ? 'Available' : 'Out of Stock';
+        return $medicine;
+    });
 
-    // Return the updated medicines data as a JSON response
+    // ✅ Return medicines from the same barangay
     return response()->json($medicines);
 }
+
 
 
 public function getAvailableMedicines()
 {
-    $userId = auth()->user()->user_id;  
-    $userBarangay = auth()->user()->brgy;  
+    $userBarangay = auth()->user()->brgy; // Get authenticated user's barangay
 
-    // Retrieve medicines created by the authenticated user and belonging to the same barangay, excluding those with 0 quantity
-    $medicines = Medicine::where('user_id', $userId) 
-                         ->whereHas('user', function($query) use ($userBarangay) {
-                             $query->where('brgy', $userBarangay);  
-                         })
-                         ->where('quantity', '>', 0) // Exclude medicines with 0 quantity
-                         ->get();
+    // ✅ Retrieve all medicines where ANY user from the same barangay created them, and quantity is greater than 0
+    $medicines = Medicine::whereHas('user', function ($query) use ($userBarangay) {
+            $query->where('users.brgy', $userBarangay); // Fetch medicines by barangay
+        })
+        ->where('quantity', '>', 0) // ✅ Exclude medicines with 0 quantity
+        ->get();
 
-    foreach ($medicines as $medicine) {
-        $medicine->medicine_status = 'Available';
-        $medicine->save(); // Save updated status
-    }
+    // ✅ Modify `medicine_status` dynamically (DO NOT save in DB inside GET requests)
+    $medicines->transform(function ($medicine) {
+        $medicine->medicine_status = 'Available'; // If it's in the list, it must have stock
+        return $medicine;
+    });
 
+    // ✅ Return medicines from the same barangay, excluding 0-quantity items
     return response()->json($medicines);
 }
+
 
 public function getMedicinesByBarangay()
 {
     try {
-        // ✅ Fetch medicines grouped by barangay
+        // Join medicine with users and fetch all location info
         $medicinesByBarangay = User::join('medicine', 'users.user_id', '=', 'medicine.user_id')
             ->select(
                 'users.brgy as barangay',
+                'users.municipality as municipality',
+                'users.province as province',
                 'medicine.name as medicine_name',
                 'medicine.unit as unit',
                 DB::raw('SUM(medicine.quantity) as total_quantity')
             )
-            ->whereNotNull('users.brgy') 
-            ->groupBy('users.brgy', 'medicine.name', 'medicine.unit') // ✅ Group by unit
-            ->orderBy('users.brgy') // ✅ Order by barangay
+            ->whereNotNull('users.brgy')
+            ->groupBy(
+                'users.brgy',
+                'users.municipality',
+                'users.province',
+                'medicine.name',
+                'medicine.unit'
+            )
+            ->orderBy('users.brgy')
             ->get();
 
         if ($medicinesByBarangay->isEmpty()) {
             return response()->json(["message" => "No medicines found"], 404);
         }
 
-        // ✅ Transform the data into a structured format
+        // Group by barangay (with full location) and list medicines inside
         $groupedData = [];
-        foreach ($medicinesByBarangay as $item) {
-            $barangay = $item->barangay;
 
-            if (!isset($groupedData[$barangay])) {
-                $groupedData[$barangay] = [
-                    'barangay' => $barangay,
+        foreach ($medicinesByBarangay as $item) {
+            $key = $item->barangay . '|' . $item->municipality . '|' . $item->province;
+
+            if (!isset($groupedData[$key])) {
+                $groupedData[$key] = [
+                    'barangay' => $item->barangay,
+                    'municipality' => $item->municipality,
+                    'province' => $item->province,
                     'medicines' => [],
                 ];
             }
 
-            $groupedData[$barangay]['medicines'][] = [
+            $groupedData[$key]['medicines'][] = [
                 'name' => $item->medicine_name,
                 'total_quantity' => $item->total_quantity,
-                'unit' => $item->unit, // ✅ Include unit in response
+                'unit' => $item->unit,
             ];
         }
 
@@ -107,6 +113,9 @@ public function getMedicinesByBarangay()
         ], 500);
     }
 }
+
+
+
 
 
 
@@ -167,6 +176,100 @@ public function store(MedicineRequest $request)
 
     return response()->json($medicine);
 }
+//Admin Report
+public function getMonthlyMedicineAvailed()
+{
+    // Count how many times each medicine was availed per month
+    $monthlyMedicineAvailed = DB::table('citizen_medicine')
+        ->join('medicine', 'citizen_medicine.medicine_id', '=', 'medicine.medicine_id')
+        ->select(
+            DB::raw("DATE_FORMAT(citizen_medicine.created_at, '%M %Y') as month"), // ✅ Month as a word
+            DB::raw("DATE_FORMAT(citizen_medicine.created_at, '%Y-%m') as month_order"), // ✅ Sortable format
+            'medicine.name as medicine_name',
+            DB::raw("COUNT(citizen_medicine.medicine_id) as total_availed")
+        )
+        ->groupBy('month', 'month_order', 'medicine.name')
+        ->orderBy('month_order', 'ASC') 
+        ->orderByDesc('total_availed')
+        ->get();
+
+    return response()->json($monthlyMedicineAvailed);
+}
+//User Report
+public function getBarangayMonthlyMedicineAvailed()
+{
+    $userBarangay = auth()->user()->brgy; // ✅ Get the logged-in user's barangay
+
+    // Count how many times each medicine was availed per month, filtered by barangay
+    $monthlyMedicineAvailed = DB::table('citizen_medicine')
+        ->join('medicine', 'citizen_medicine.medicine_id', '=', 'medicine.medicine_id')
+        ->join('users', 'medicine.user_id', '=', 'users.user_id') // ✅ Ensure medicine belongs to the same barangay
+        ->where('users.brgy', $userBarangay) // ✅ Filter by logged-in user's barangay
+        ->select(
+            DB::raw("DATE_FORMAT(citizen_medicine.created_at, '%M %Y') as month"), // ✅ Month as a word
+            DB::raw("DATE_FORMAT(citizen_medicine.created_at, '%Y-%m') as month_order"), // ✅ Sortable format
+            'medicine.name as medicine_name',
+            DB::raw("COUNT(citizen_medicine.medicine_id) as total_availed")
+        )
+        ->groupBy('month', 'month_order', 'medicine.name')
+        ->orderBy('month_order', 'ASC') 
+        ->orderByDesc('total_availed')
+        ->get();
+
+    return response()->json($monthlyMedicineAvailed);
+}
+
+
+//used
+public function getMonthlyMedicineAvailedByBarangay(Request $request)
+{
+    try {
+        $barangay = $request->query('barangay'); // ✅ Get barangay from query parameter
+
+        if (!$barangay) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Barangay parameter is required.'
+            ], 400);
+        }
+
+        // ✅ Fetch medicine availed by specific barangay
+        $monthlyMedicineAvailed = DB::table('citizen_medicine')
+            ->join('medicine', 'citizen_medicine.medicine_id', '=', 'medicine.medicine_id')
+            ->join('citizen_details', 'citizen_medicine.citizen_id', '=', 'citizen_details.citizen_id')
+            ->where('citizen_details.barangay', $barangay) // ✅ Filter by barangay
+            ->select(
+                DB::raw("DATE_FORMAT(citizen_medicine.created_at, '%M %Y') as month"),
+                DB::raw("DATE_FORMAT(citizen_medicine.created_at, '%Y-%m') as month_order"),
+                'medicine.name as medicine_name',
+                DB::raw("COUNT(citizen_medicine.medicine_id) as total_availed")
+            )
+            ->groupBy('month', 'month_order', 'medicine.name')
+            ->orderBy('month_order', 'ASC') // ✅ Orders by actual month (YYYY-MM)
+            ->orderByDesc('total_availed')
+            ->get();
+
+        if ($monthlyMedicineAvailed->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => "No medicine availed data found for barangay: $barangay."
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'barangay' => $barangay,
+            'data' => $monthlyMedicineAvailed
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'An error occurred: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+
 
 
 
@@ -176,7 +279,6 @@ public function updateMedicineStock(Request $request, $medicine_id)
     // Validate incoming request
     $validated = $request->validate([
         'quantity' => 'required|integer|min:1',
-        'unit' => 'required|string',
         'date_acquired' => 'required|date',
     ]);
 
@@ -186,11 +288,6 @@ public function updateMedicineStock(Request $request, $medicine_id)
 
         // Update the quantity using increment (more efficient)
         $medicine->increment('quantity', $validated['quantity']);
-        
-        // Update the unit if changed
-        if ($medicine->unit !== $validated['unit']) {
-            $medicine->update(['unit' => $validated['unit']]);
-        }
 
         return response()->json([
             'message' => 'Medicine stock updated successfully',
@@ -270,9 +367,8 @@ public function update(Request $request, string $id)
     $validated = $request->validate([
         'name'                 => 'nullable|string|max:255',
         'usage_description'    => 'nullable|string|max:255',
-        'batch_no'             => 'nullable|string|max:255',
-        'location'             => 'nullable|string|max:255',
-        'quantity'             => 'nullable|integer|min:0', // ✅ Ensure quantity is allowed
+       
+        'quantity'             => 'nullable|integer|min:0', 
     ]);
 
     // Find the medicine by ID
@@ -299,5 +395,8 @@ public function update(Request $request, string $id)
 
     return response()->json(['message' => 'Medicine updated successfully', 'medicine' => $medicine]);
 }
+
+
+
 
 }

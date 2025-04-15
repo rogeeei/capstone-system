@@ -41,8 +41,6 @@ class Medicine extends Model
         'unit',
         'quantity',
         'expiration_date',
-        'batch_no',
-        'location',
         'medicine_status',
         'date_acquired',
         'user_id',
@@ -60,9 +58,10 @@ public function transactions()
 }
 
 public function user()
-    {
-        return $this->belongsTo(User::class, 'user_id', 'user_id');
-    }
+{
+    return $this->belongsTo(User::class, 'user_id', 'user_id'); // Ensure correct foreign key
+}
+
     public function medicines()
     {
         return $this->hasMany(Medicine::class, 'user_id', 'user_id'); 

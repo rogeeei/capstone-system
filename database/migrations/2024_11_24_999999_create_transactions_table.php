@@ -11,13 +11,18 @@ return new class extends Migration
      */
       public function up(): void
     {
-        Schema::create('transactions', function (Blueprint $table) {
-            $table->id();
-            $table->string('citizen_id');  
-            $table->foreignId('service_id')->nullable()->constrained('services'); 
-            $table->date('transaction_date');
-            $table->timestamps();
-        });
+       Schema::create('transactions', function (Blueprint $table) {
+    $table->id();
+    $table->string('citizen_id');  
+    $table->text('blood_pressure')->nullable();
+    $table->foreignId('service_id')->nullable()->constrained('services'); 
+    $table->date('transaction_date');
+    $table->timestamps();
+
+    
+    $table->foreign('citizen_id')->references('citizen_id')->on('citizen_details')->onDelete('cascade');
+});
+
     }
 
     public function down(): void

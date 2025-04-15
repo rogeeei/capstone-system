@@ -12,9 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('stakeholders', function (Blueprint $table) {
-    $table->boolean('is_approved')->default(false); // Default to false (not approved)
-});
-
+        $table->string('agency_name')->after('id'); 
+    });
     }
 
     /**
@@ -22,8 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('stakeholders', function (Blueprint $table) {
-            //
-        });
+       Schema::table('stakeholders', function (Blueprint $table) {
+        $table->dropColumn('agency_name'); 
+    });
     }
 };

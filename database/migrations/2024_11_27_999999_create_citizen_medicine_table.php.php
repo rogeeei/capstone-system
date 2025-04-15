@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('citizen_id');
             $table->string('medicine_id');
             $table->integer('quantity')->default(1); 
-            $table->string('unit')->nullable();
+            $table->string('unit'); 
             $table->unsignedBigInteger('transaction_id')->nullable();
             $table->timestamps();
 

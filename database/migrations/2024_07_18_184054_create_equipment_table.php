@@ -16,10 +16,9 @@ return new class extends Migration
             $table->text('name');
             $table->text('description');
             $table->integer('quantity');
-            $table->text('location');
             $table->text('condition');
             $table->date('date_acquired')->nullable();
-            $table->string('user_id');  // Store as string (e.g., UUID)
+            $table->string('user_id');  
             
             // Foreign key to the users table
             $table->foreign('user_id')->references('user_id')->on('users')->onDelete('cascade');

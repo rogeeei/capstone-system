@@ -11,15 +11,12 @@ return new class extends Migration
      */
    public function up(): void
     {
-        Schema::create('services', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->text('description');
-            $table->string('user_id'); 
-            $table->timestamps();
-
-            $table->foreign('user_id')->references('user_id')->on('users')->onDelete('cascade');
-        });
+       Schema::create('services', function (Blueprint $table) {
+    $table->id();
+    $table->string('name')->unique(); 
+    $table->text('description')->nullable();
+    $table->timestamps();
+});
     }
 
     /**

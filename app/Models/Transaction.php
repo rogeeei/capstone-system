@@ -9,7 +9,7 @@ class Transaction extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['citizen_id', 'service_id', 'transaction_date'];
+    protected $fillable = ['citizen_id', 'service_id', 'transaction_date', 'blood_pressure'];
 public function service()
 {
     return $this->belongsTo(Services::class, 'service_id');
@@ -21,9 +21,9 @@ public function medicines()
         ->withPivot('quantity', 'unit');
 }
 
-public function citizen()
-{
-    return $this->belongsTo(CitizenDetails::class, 'citizen_id', 'citizen_id');
-}
+  public function citizenDetails()
+    {
+        return $this->belongsTo(CitizenDetails::class, 'citizen_id'); // Assuming the column is 'citizen_id'
+    }
 
 }

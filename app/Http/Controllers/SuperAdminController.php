@@ -21,6 +21,7 @@ class SuperAdminController extends Controller
     return response()->json($getAdmin->map(function ($user) {
         $user->role = ucfirst($user->role); // Capitalize first letter
         return $user;
+        
     }));
 }
 

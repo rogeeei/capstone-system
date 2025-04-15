@@ -24,12 +24,14 @@ class Stakeholder extends Authenticatable
      */
     protected $fillable = [
         'agency_name', 
-        'purok',
         'barangay', 
         'municipality', 
         'province', 
         'is_approved',
-        'request_approved',
+        'username',
+        'password',
+        'confirmed_password',
+
     ];
 
   

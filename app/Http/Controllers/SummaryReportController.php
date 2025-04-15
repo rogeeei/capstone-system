@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\Services;
 use App\Models\Transaction;
+use App\Models\User;
+use App\Models\Medicine;
+
 
 
 
@@ -129,6 +132,68 @@ public function getDemographicSummaryByBarangay($barangay)
     }
 }
 
+public function getDemographicSummaryByProvince(Request $request)
+{
+    $province = $request->query('province'); // Get province from URL
+
+    if (!$province) {
+        return response()->json(['error' => 'Province parameter is required'], 400);
+    }
+    try {
+        // **Age group calculation per province**
+        $ageGroups = CitizenDetails::selectRaw("
+            CASE 
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 0 AND 2 THEN 'Infant'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 3 AND 5 THEN 'Toddler'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 6 AND 12 THEN 'Child'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 13 AND 19 THEN 'Teenager'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 20 AND 39 THEN 'Young Adult'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 40 AND 59 THEN 'Middle-aged Adult'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 60 AND 79 THEN 'Senior'
+                ELSE 'Elderly' 
+            END as age_group, COUNT(DISTINCT citizen_id) as count
+        ")
+        ->where('province', $province) // Filter by province
+        ->whereNotNull('date_of_birth')
+        ->groupBy('age_group')
+        ->get()
+        ->mapWithKeys(function ($item) {
+            return [$item->age_group => $item->count];
+        });
+
+        // **Gender distribution per province**
+        $genderDistribution = CitizenDetails::selectRaw("
+            CASE 
+                WHEN LOWER(gender) IN ('male', 'm') THEN 'Male'
+                WHEN LOWER(gender) IN ('female', 'f') THEN 'Female'
+            END as gender, COUNT(DISTINCT citizen_id) as count
+        ")
+        ->where('province', $province) // Filter by province
+        ->whereIn('gender', ['Male', 'male', 'Female', 'female', 'M', 'm', 'F', 'f'])
+        ->groupBy('gender')
+        ->get()
+        ->mapWithKeys(function ($item) {
+            return [$item->gender => $item->count];
+        });
+
+        // **Total population count per province**
+        $totalPopulation = CitizenDetails::where('province', $province)
+            ->distinct('citizen_id')
+            ->count();
+
+        return response()->json([
+            'province' => $province,
+            'ageGroups' => $ageGroups,
+            'genderDistribution' => $genderDistribution,
+            'totalPopulation' => $totalPopulation
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Failed to fetch demographic summary for province: ' . $e->getMessage());
+        return response()->json(['error' => 'Unable to fetch demographic summary data'], 500);
+    }
+}
+
+
 //Reports JS
 public function getServiceWithAgeDistribution($serviceName)
 {
@@ -195,7 +260,7 @@ public function getServiceWithAgeDistribution($serviceName)
 
 //User Report JS 
 public function getServiceWithAgeDistributionByBarangay(Request $request, $serviceId)
-{
+  {
     try {
         $user = auth()->user(); // ✅ Get authenticated user
         $role = $user->role ?? null; // ✅ Get user role
@@ -264,6 +329,9 @@ public function getServiceWithAgeDistributionByBarangay(Request $request, $servi
         ], 500);
     }
 }
+
+
+
 
 
 //Admin Report JS
@@ -345,11 +413,483 @@ public function getAdminServiceWithAgeDistributionByBarangay(Request $request, $
     }
 }
 
+public function getBarangayReport(Request $request)
+{
+    try {
+        $user = auth()->user();
+        
+        // ✅ Super admin: Get barangay, municipality, and province from URL parameters
+        if ($user->role === 'super admin') {
+            $province = $request->query('province');
+            $municipality = $request->query('municipality');
+            $barangay = $request->query('barangay');
+
+            if (!$province || !$municipality || !$barangay) {
+                return response()->json([
+                    "success" => false,
+                    "error" => "Province, municipality, and barangay parameters are required for super admin."
+                ], 400);
+            }
+        } else {
+            // ✅ Other users: Get barangay, municipality, and province from the authenticated user's data
+            $barangay = $user->brgy ?? null;
+            $municipality = $user->municipality ?? null;
+            $province = $user->province ?? null;
+
+            if (!$barangay || !$municipality || !$province) {
+                return response()->json([
+                    "success" => false,
+                    "error" => "User does not have assigned barangay, municipality, or province."
+                ], 400);
+            }
+        }
+
+        // ✅ Ensure that all citizens belong to the same province, municipality, and barangay
+        $totalPopulation = CitizenDetails::where('barangay', $barangay)
+            ->where('municipality', $municipality)
+            ->where('province', $province)
+            ->distinct('citizen_id')
+            ->count();
+
+        // ✅ Gender Distribution
+        $genderDistribution = CitizenDetails::selectRaw("
+            CASE 
+                WHEN LOWER(gender) IN ('male', 'm') THEN 'Male'
+                WHEN LOWER(gender) IN ('female', 'f') THEN 'Female'
+            END as gender, COUNT(DISTINCT citizen_id) as count
+        ")
+        ->where('barangay', $barangay)
+        ->where('municipality', $municipality)
+        ->where('province', $province)
+        ->whereNotNull('gender')
+        ->groupBy('gender')
+        ->pluck('count', 'gender');
+
+        // ✅ Age Distribution
+        $ageGroups = CitizenDetails::selectRaw("
+            CASE 
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 0 AND 2 THEN 'Infant'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 3 AND 5 THEN 'Toddler'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 6 AND 12 THEN 'Child'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 13 AND 19 THEN 'Teenager'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 20 AND 39 THEN 'Young Adult'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 40 AND 59 THEN 'Middle-aged Adult'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 60 AND 79 THEN 'Senior'
+                ELSE 'Elderly' 
+            END as age_group, COUNT(DISTINCT citizen_id) as count
+        ")
+        ->where('barangay', $barangay)
+        ->where('municipality', $municipality)
+        ->where('province', $province)
+        ->whereNotNull('date_of_birth')
+        ->groupBy('age_group')
+        ->pluck('count', 'age_group');
+
+        // ✅ BMI Classification
+        $bmiData = CitizenDetails::where('barangay', $barangay)
+            ->where('municipality', $municipality)
+            ->where('province', $province)
+            ->whereNotNull('height')
+            ->whereNotNull('weight')
+            ->get()
+            ->groupBy(function ($citizen) {
+                $height = floatval($citizen->height) / 100;
+                $weight = floatval($citizen->weight);
+                if ($height <= 0) return 'Unknown';
+
+                $bmi = $weight / ($height * $height);
+                if ($bmi < 18.5) return 'Underweight';
+                if ($bmi >= 18.5 && $bmi <= 24.9) return 'Normal';
+                if ($bmi >= 25 && $bmi <= 29.9) return 'Overweight';
+                return 'Obese';
+            })
+            ->map(fn($group) => $group->count());
+
+        // ✅ Medicine Availment (Count each availment)
+        $medicineData = DB::table('citizen_medicine')
+            ->join('medicine', 'citizen_medicine.medicine_id', '=', 'medicine.medicine_id')
+            ->join('citizen_details', 'citizen_medicine.citizen_id', '=', 'citizen_details.citizen_id')
+            ->where('citizen_details.barangay', $barangay)
+            ->where('citizen_details.municipality', $municipality)
+            ->where('citizen_details.province', $province)
+            ->selectRaw("medicine.name AS medicine_name, COUNT(citizen_medicine.citizen_id) AS total_availed")
+            ->groupBy('medicine.name')
+            ->get();
+
+        // ✅ Service Availment (Ensure distinct citizens)
+        $serviceData = Transaction::join('services', 'transactions.service_id', '=', 'services.id')
+            ->join('citizen_details', 'transactions.citizen_id', '=', 'citizen_details.citizen_id')
+            ->where('citizen_details.barangay', $barangay)
+            ->where('citizen_details.municipality', $municipality)
+            ->where('citizen_details.province', $province)
+            ->selectRaw("services.name as service_name, COUNT(DISTINCT transactions.citizen_id) as total_availed")
+            ->groupBy('services.name')
+            ->get();
+
+        return response()->json([
+            "success" => true,
+            "message" => "Comprehensive report for barangay: $barangay",
+            "province" => $province ?? null,
+            "municipality" => $municipality ?? null,
+            "barangay" => $barangay,
+            "totalPopulation" => $totalPopulation,
+            "genderDistribution" => $genderDistribution,
+            "ageGroups" => $ageGroups,
+            "bmiData" => $bmiData,
+            "medicineData" => $medicineData,
+            "serviceData" => $serviceData
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            "success" => false,
+            "error" => "Unable to fetch report data",
+            "details" => $e->getMessage(),
+            "line" => $e->getLine(),
+            "file" => $e->getFile()
+        ], 500);
+    }
+}
 
 
 
 
+//Province Report JS
+public function getProvinceReport($province)
+{
+    try {
+        // ✅ Check if province is provided
+        if (!$province) {
+            return response()->json([
+                "success" => false,
+                "error" => "Province parameter is required."
+            ], 400);
+        }
 
+        // ✅ Total Population by Province
+        $totalPopulation = CitizenDetails::where('province', $province)->distinct('citizen_id')->count();
+
+        // ✅ Gender Distribution
+        $genderDistribution = CitizenDetails::selectRaw("
+            CASE 
+                WHEN LOWER(gender) IN ('male', 'm') THEN 'Male'
+                WHEN LOWER(gender) IN ('female', 'f') THEN 'Female'
+            END as gender, COUNT(*) as count
+        ")
+        ->where('province', $province)
+        ->whereNotNull('gender')
+        ->groupBy('gender')
+        ->pluck('count', 'gender');
+
+        // ✅ Age Distribution
+        $ageGroups = CitizenDetails::selectRaw("
+            CASE 
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 0 AND 2 THEN 'Infant'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 3 AND 5 THEN 'Toddler'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 6 AND 12 THEN 'Child'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 13 AND 19 THEN 'Teenager'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 20 AND 39 THEN 'Young Adult'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 40 AND 59 THEN 'Middle-aged Adult'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 60 AND 79 THEN 'Senior'
+                ELSE 'Elderly' 
+            END as age_group, COUNT(*) as count
+        ")
+        ->where('province', $province)
+        ->whereNotNull('date_of_birth')
+        ->groupBy('age_group')
+        ->pluck('count', 'age_group');
+
+        // ✅ BMI Classification (Using citizen_details)
+        $bmiData = CitizenDetails::where('province', $province)
+            ->whereNotNull('height')
+            ->whereNotNull('weight')
+            ->get()
+            ->groupBy(function ($citizen) {
+                $height = floatval($citizen->height) / 100;
+                $weight = floatval($citizen->weight);
+                if ($height <= 0) return 'Unknown';
+
+                $bmi = $weight / ($height * $height);
+                if ($bmi < 18.5) return 'Underweight';
+                if ($bmi >= 18.5 && $bmi <= 24.9) return 'Normal';
+                if ($bmi >= 25 && $bmi <= 29.9) return 'Overweight';
+                return 'Obese';
+            })
+            ->map(fn($group) => $group->count());
+
+        // ✅ Medicine Availment by Province
+        $medicineData = DB::table('citizen_medicine')
+            ->join('medicine', 'citizen_medicine.medicine_id', '=', 'medicine.medicine_id')
+            ->join('citizen_details', 'citizen_medicine.citizen_id', '=', 'citizen_details.citizen_id')
+            ->where('citizen_details.province', $province)
+            ->selectRaw("medicine.name AS medicine_name, COUNT(DISTINCT citizen_medicine.citizen_id) AS total_availed")
+            ->groupBy('medicine.name')
+            ->get();
+
+        // ✅ Service Availment by Province
+        $serviceData = Transaction::join('services', 'transactions.service_id', '=', 'services.id')
+            ->join('citizen_details', 'transactions.citizen_id', '=', 'citizen_details.citizen_id')
+            ->where('citizen_details.province', $province)
+            ->selectRaw("services.name as service_name, COUNT(DISTINCT transactions.citizen_id) as total_availed")
+            ->groupBy('services.name')
+            ->get();
+
+        return response()->json([
+            "success" => true,
+            "message" => "Comprehensive report for province: $province",
+            "province" => $province,
+            "totalPopulation" => $totalPopulation,
+            "genderDistribution" => $genderDistribution,
+            "ageGroups" => $ageGroups,
+            "bmiData" => $bmiData,
+            "medicineData" => $medicineData,
+            "serviceData" => $serviceData
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            "success" => false,
+            "error" => "Unable to fetch report data",
+            "details" => $e->getMessage(),
+            "line" => $e->getLine(),
+            "file" => $e->getFile()
+        ], 500);
+    }
+}
+
+ 
+//Municipal Report JS
+public function getMunicipalityReport($province, $municipality)
+{
+    try {
+        // ✅ Check if both province and municipality are provided
+        if (!$province || !$municipality) {
+            return response()->json([
+                "success" => false,
+                "error" => "Province and municipality parameters are required."
+            ], 400);
+        }
+
+        // ✅ Total Population by Municipality
+        $totalPopulation = CitizenDetails::where('province', $province)
+            ->where('municipality', $municipality)
+            ->distinct('citizen_id')
+            ->count();
+
+        // ✅ Gender Distribution
+        $genderDistribution = CitizenDetails::selectRaw("
+            CASE 
+                WHEN LOWER(gender) IN ('male', 'm') THEN 'Male'
+                WHEN LOWER(gender) IN ('female', 'f') THEN 'Female'
+            END as gender, COUNT(*) as count
+        ")
+        ->where('province', $province)
+        ->where('municipality', $municipality)
+        ->whereNotNull('gender')
+        ->groupBy('gender')
+        ->pluck('count', 'gender');
+
+        // ✅ Age Distribution
+        $ageGroups = CitizenDetails::selectRaw("
+            CASE 
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 0 AND 2 THEN 'Infant'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 3 AND 5 THEN 'Toddler'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 6 AND 12 THEN 'Child'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 13 AND 19 THEN 'Teenager'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 20 AND 39 THEN 'Young Adult'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 40 AND 59 THEN 'Middle-aged Adult'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 60 AND 79 THEN 'Senior'
+                ELSE 'Elderly' 
+            END as age_group, COUNT(*) as count
+        ")
+        ->where('province', $province)
+        ->where('municipality', $municipality)
+        ->whereNotNull('date_of_birth')
+        ->groupBy('age_group')
+        ->pluck('count', 'age_group');
+
+        // ✅ BMI Classification
+        $bmiData = CitizenDetails::where('province', $province)
+            ->where('municipality', $municipality)
+            ->whereNotNull('height')
+            ->whereNotNull('weight')
+            ->get()
+            ->groupBy(function ($citizen) {
+                $height = floatval($citizen->height) / 100;
+                $weight = floatval($citizen->weight);
+                if ($height <= 0) return 'Unknown';
+
+                $bmi = $weight / ($height * $height);
+                if ($bmi < 18.5) return 'Underweight';
+                if ($bmi >= 18.5 && $bmi <= 24.9) return 'Normal';
+                if ($bmi >= 25 && $bmi <= 29.9) return 'Overweight';
+                return 'Obese';
+            })
+            ->map(fn($group) => $group->count());
+
+        // ✅ Medicine Availment by Municipality
+        $medicineData = DB::table('citizen_medicine')
+            ->join('medicine', 'citizen_medicine.medicine_id', '=', 'medicine.medicine_id')
+            ->join('citizen_details', 'citizen_medicine.citizen_id', '=', 'citizen_details.citizen_id')
+            ->where('citizen_details.province', $province)
+            ->where('citizen_details.municipality', $municipality)
+            ->selectRaw("medicine.name AS medicine_name, COUNT(DISTINCT citizen_medicine.citizen_id) AS total_availed")
+            ->groupBy('medicine.name')
+            ->get();
+
+        // ✅ Service Availment by Municipality
+        $serviceData = Transaction::join('services', 'transactions.service_id', '=', 'services.id')
+            ->join('citizen_details', 'transactions.citizen_id', '=', 'citizen_details.citizen_id')
+            ->where('citizen_details.province', $province)
+            ->where('citizen_details.municipality', $municipality)
+            ->selectRaw("services.name as service_name, COUNT(DISTINCT transactions.citizen_id) as total_availed")
+            ->groupBy('services.name')
+            ->get();
+
+        // ✅ Fetch Barangays under the Municipality (Only from Approved Users)
+        $barangays = User::where('municipality', $municipality)
+            ->where('approved', true) // ✅ Only approved users
+            ->whereNotNull('brgy')
+            ->distinct()
+            ->pluck('brgy');
+
+        return response()->json([
+            "success" => true,
+            "message" => "Comprehensive report for municipality: $municipality in province: $province",
+            "province" => $province,
+            "municipality" => $municipality,
+            "totalPopulation" => $totalPopulation,
+            "genderDistribution" => $genderDistribution,
+            "ageGroups" => $ageGroups,
+            "bmiData" => $bmiData,
+            "medicineData" => $medicineData,
+            "serviceData" => $serviceData,
+            "barangays" => $barangays // ✅ Only for approved users
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            "success" => false,
+            "error" => "Unable to fetch report data",
+            "details" => $e->getMessage(),
+            "line" => $e->getLine(),
+            "file" => $e->getFile()
+        ], 500);
+    }
+}
+
+public function getBarangayReportWithParams($province, $municipality, $barangay)
+{
+    try {
+        if (!$province || !$municipality || !$barangay) {
+            return response()->json([
+                "success" => false,
+                "error" => "Province, municipality, and barangay parameters are required."
+            ], 400);
+        }
+
+        // ✅ Total Population
+        $totalPopulation = CitizenDetails::where('province', $province)
+            ->where('municipality', $municipality)
+            ->where('barangay', $barangay)
+            ->distinct('citizen_id')
+            ->count();
+
+        // ✅ Gender Distribution
+        $genderDistribution = CitizenDetails::selectRaw("
+            CASE 
+                WHEN LOWER(gender) IN ('male', 'm') THEN 'Male'
+                WHEN LOWER(gender) IN ('female', 'f') THEN 'Female'
+            END as gender, COUNT(*) as count
+        ")
+        ->where('province', $province)
+        ->where('municipality', $municipality)
+        ->where('barangay', $barangay)
+        ->whereNotNull('gender')
+        ->groupBy('gender')
+        ->pluck('count', 'gender');
+
+        // ✅ Age Distribution
+        $ageGroups = CitizenDetails::selectRaw("
+            CASE 
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 0 AND 2 THEN 'Infant'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 3 AND 5 THEN 'Toddler'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 6 AND 12 THEN 'Child'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 13 AND 19 THEN 'Teenager'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 20 AND 39 THEN 'Young Adult'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 40 AND 59 THEN 'Middle-aged Adult'
+                WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 60 AND 79 THEN 'Senior'
+                ELSE 'Elderly' 
+            END as age_group, COUNT(*) as count
+        ")
+        ->where('province', $province)
+        ->where('municipality', $municipality)
+        ->where('barangay', $barangay)
+        ->whereNotNull('date_of_birth')
+        ->groupBy('age_group')
+        ->pluck('count', 'age_group');
+
+        // ✅ BMI Classification
+        $bmiData = CitizenDetails::where('province', $province)
+            ->where('municipality', $municipality)
+            ->where('barangay', $barangay)
+            ->whereNotNull('height')
+            ->whereNotNull('weight')
+            ->get()
+            ->groupBy(function ($citizen) {
+                $height = floatval($citizen->height) / 100;
+                $weight = floatval($citizen->weight);
+                if ($height <= 0) return 'Unknown';
+
+                $bmi = $weight / ($height * $height);
+                if ($bmi < 18.5) return 'Underweight';
+                if ($bmi >= 18.5 && $bmi <= 24.9) return 'Normal';
+                if ($bmi >= 25 && $bmi <= 29.9) return 'Overweight';
+                return 'Obese';
+            })
+            ->map(fn($group) => $group->count());
+
+        // ✅ Medicine Availment
+        $medicineData = DB::table('citizen_medicine')
+            ->join('medicine', 'citizen_medicine.medicine_id', '=', 'medicine.medicine_id')
+            ->join('citizen_details', 'citizen_medicine.citizen_id', '=', 'citizen_details.citizen_id')
+            ->where('citizen_details.province', $province)
+            ->where('citizen_details.municipality', $municipality)
+            ->where('citizen_details.barangay', $barangay)
+            ->selectRaw("medicine.name AS medicine_name, COUNT(DISTINCT citizen_medicine.citizen_id) AS total_availed")
+            ->groupBy('medicine.name')
+            ->get();
+
+        // ✅ Service Availment
+        $serviceData = Transaction::join('services', 'transactions.service_id', '=', 'services.id')
+            ->join('citizen_details', 'transactions.citizen_id', '=', 'citizen_details.citizen_id')
+            ->where('citizen_details.province', $province)
+            ->where('citizen_details.municipality', $municipality)
+            ->where('citizen_details.barangay', $barangay)
+            ->selectRaw("services.name as service_name, COUNT(DISTINCT transactions.citizen_id) as total_availed")
+            ->groupBy('services.name')
+            ->get();
+
+        return response()->json([
+            "success" => true,
+            "message" => "Comprehensive report for barangay: $barangay",
+            "province" => $province,
+            "municipality" => $municipality,
+            "barangay" => $barangay,
+            "totalPopulation" => $totalPopulation,
+            "genderDistribution" => $genderDistribution,
+            "ageGroups" => $ageGroups,
+            "bmiData" => $bmiData,
+            "medicineData" => $medicineData,
+            "serviceData" => $serviceData
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            "success" => false,
+            "error" => "Unable to fetch report data",
+            "details" => $e->getMessage(),
+            "line" => $e->getLine(),
+            "file" => $e->getFile()
+        ], 500);
+    }
+}
 
 
 }

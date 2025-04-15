@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\User;
+
 
 class Equipment extends Model
 {
@@ -35,7 +37,7 @@ class Equipment extends Model
      * @var array<int, string>
      */
     protected $fillable = [
-        'name', 'description', 'quantity', 'location', 'condition', 'date_acquired', 'equipment_id', 'user_id',
+        'name', 'description', 'quantity',  'condition', 'date_acquired', 'equipment_id', 'user_id',
     ];
 
     public function user()

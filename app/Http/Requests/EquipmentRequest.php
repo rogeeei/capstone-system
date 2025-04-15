@@ -25,7 +25,6 @@ class EquipmentRequest extends FormRequest
             'name'                      => 'required|string|max:255',
             'description'                => 'required|string|max:255',
             'quantity'                   => 'required|integer',
-            'location'                   => 'required|string|max:255',
             'condition'                  => 'required|string|max:255',
             'date_acquired'              => 'nullable|date|max:255',
         ];

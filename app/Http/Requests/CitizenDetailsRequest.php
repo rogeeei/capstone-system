@@ -28,8 +28,6 @@ class CitizenDetailsRequest extends FormRequest
             'suffix'                    => 'nullable|string|max:255',
             'purok'                     => 'required|string|max:255',
             'barangay'                  => 'required|string|max:255',
-            'municipality'              => 'required|string|max:255',
-            'province'                  => 'required|string|max:255',
             'date_of_birth'             => 'required|date|date_format:Y-m-d',
             'gender'                    => 'required|string',
             'blood_type'                => 'nullable|string|max:255',

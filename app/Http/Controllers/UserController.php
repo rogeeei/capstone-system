@@ -7,27 +7,135 @@ use App\Http\Requests\UserRequest;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Validator;
+use Illuminate\Http\JsonResponse; 
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+
 
 class UserController extends Controller
 {
 public function getBhw()
 {
+    $user = auth()->user();
+
+    // ✅ Ensure user has location details
+    if (!$user->brgy || !$user->municipality || !$user->province) {
+        return response()->json([
+            "success" => false,
+            "message" => "User's barangay, municipality, or province is missing.",
+            "user_details" => [
+                "barangay" => $user->brgy,
+                "municipality" => $user->municipality,
+                "province" => $user->province
+            ]
+        ], 400);
+    }
+
+    // ✅ Fetch only unapproved users with role "user" in the same barangay, municipality, and province
+    $unapprovedUsers = User::where('approved', false)
+        ->where('role', 'user') // Ensure we get only users with role "user"
+        ->where('brgy', $user->brgy)
+        ->where('municipality', $user->municipality)
+        ->where('province', $user->province)
+        ->get();
+
+    // 🛠 Check if users exist
+    if ($unapprovedUsers->isEmpty()) {
+        return response()->json([
+            "success" => true,
+            "message" => "No unapproved users found.",
+            "user_details" => [
+                "barangay" => $user->brgy,
+                "municipality" => $user->municipality,
+                "province" => $user->province
+            ],
+            "data" => []
+        ]);
+    }
+
+    return response()->json([
+        "success" => true,
+        "message" => "Unapproved users retrieved successfully.",
+        "user_details" => [
+            "barangay" => $user->brgy,
+            "municipality" => $user->municipality,
+            "province" => $user->province
+        ],
+        "data" => $unapprovedUsers
+    ]);
+}
+
+
+
+
+
+public function getPuroksByBarangay()
+{
+    $user = auth()->user();
+
+    // ✅ Ensure user has complete location details
+    if (!$user->brgy || !$user->municipality || !$user->province) {
+        return response()->json([
+            "success" => false,
+            "message" => "User's address details are missing.",
+            "user_details" => [
+                "barangay" => $user->brgy,
+                "municipality" => $user->municipality,
+                "province" => $user->province
+            ]
+        ], 400);
+    }
+
+    // ✅ Fetch all unique puroks from the users table within the user's barangay, municipality, and province
+    $puroks = User::where('brgy', $user->brgy)
+        ->where('municipality', $user->municipality)
+        ->where('province', $user->province)
+        ->whereNotNull('purok') // Ensure purok is not NULL
+        ->distinct() // Get unique puroks
+        ->pluck('purok'); // Retrieve only the purok column
+
+    // ✅ Handle case where no puroks are found
+    if ($puroks->isEmpty()) {
+        return response()->json([
+            "success" => false,
+            "message" => "No puroks found for the user's barangay.",
+            "data" => []
+        ], 404);
+    }
+
+    // ✅ Return the list of unique puroks
+    return response()->json([
+        "success" => true,
+        "message" => "Puroks retrieved successfully.",
+        "data" => $puroks
+    ]);
+}
+
+
+
+
+
+
+
+
+public function getApprovedAdmins()
+{
     $adminBarangay = auth()->user()->brgy; // ✅ Get the authenticated admin's barangay
 
-    // Retrieve users with the 'user' role who belong to the same barangay as the admin
-    $bhwUsers = User::where('role', 'user')
-                    ->where('brgy', $adminBarangay) // ✅ Filter by barangay
-                    ->get();
+    // Retrieve approved users with the 'admin' role who belong to the same barangay as the authenticated admin
+    $approvedAdmins = User::where('role', 'admin')
+                          ->where('brgy', $adminBarangay) // ✅ Filter by barangay
+                          ->where('status', 'approved') // ✅ Only approved users
+                          ->get();
 
     // Capitalize the first letter of the role for each user
-    $bhwUsers->transform(function ($user) {
+    $approvedAdmins->transform(function ($user) {
         $user->role = ucfirst($user->role);
         return $user;
     });
 
     // Return the filtered users as a JSON response
-    return response()->json($bhwUsers);
+    return response()->json($approvedAdmins);
 }
 
 
@@ -66,7 +174,7 @@ public function getUsersWithMedicinesByBrgy()
     /**
      * Store a newly created resource in storage.
      */
-   public function store(UserRequest $request)
+public function store(UserRequest $request): JsonResponse // ✅ Correct return type
 {
     $validated = $request->validated();
     $validated['password'] = Hash::make($validated['password']);
@@ -93,6 +201,7 @@ public function getUsersWithMedicinesByBrgy()
         'user' => $user
     ], 201);
 }
+
 
 
 
@@ -168,6 +277,53 @@ public function getUsersWithMedicinesByBrgy()
 
 }
 
+public function getMunicipalitiesByProvince(Request $request)
+{
+    try {
+        // ✅ Get province from URL parameter
+        $province = $request->query('province');
+
+        // ✅ Validate if province is provided
+        if (!$province) {
+            return response()->json([
+                "success" => false,
+                "error" => "Province parameter is required."
+            ], 400);
+        }
+
+        // ✅ Fetch distinct municipalities where users are approved
+        $municipalities = User::where('province', $province)
+            ->whereNotNull('municipality')
+            ->where('approved', true) // ✅ Only include approved users
+            ->distinct()
+            ->pluck('municipality');
+
+        // ✅ If no municipalities found, return an appropriate message
+        if ($municipalities->isEmpty()) {
+            return response()->json([
+                "success" => false,
+                "message" => "No municipalities found for the selected province from approved users."
+            ], 404);
+        }
+
+        return response()->json([
+            "success" => true,
+            "message" => "Municipalities retrieved successfully from approved users.",
+            "province" => $province,
+            "municipalities" => $municipalities
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            "success" => false,
+            "error" => "Unable to fetch municipalities.",
+            "details" => $e->getMessage(),
+            "line" => $e->getLine(),
+            "file" => $e->getFile()
+        ], 500);
+    }
+}
+
+
 
     public function getUserDetails()
     {
@@ -197,4 +353,41 @@ public function getUsersWithMedicinesByBrgy()
 
         return $user;
     }
+
+    public function getDistinctProvinces()
+{
+    try {
+        // ✅ Fetch distinct provinces from approved users, excluding super admins
+        $provinces = User::whereNotNull('province')
+            ->whereNotIn('province', ['N/A', 'None', 'Not Available', ''])
+            ->where('approved', true) // ✅ Only include approved users
+            ->where('role', '!=', 'super_admin') // ✅ Exclude super admins
+            ->orderBy('province', 'asc') // ✅ Sort alphabetically
+            ->distinct()
+            ->pluck('province');
+
+        // ✅ If no provinces found, return a message
+        if ($provinces->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No valid provinces found for approved users (excluding super admins).'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Distinct provinces retrieved successfully (from approved users, excluding super admins).',
+            'provinces' => $provinces
+        ]);
+    } catch (\Exception $e) {
+        // ✅ Log error for debugging
+        Log::error("Error fetching provinces: " . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => 'An error occurred while fetching provinces.',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
 }

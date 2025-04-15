@@ -11,23 +11,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('stakeholders', function (Blueprint $table) {
-             Schema::table('stakeholders', function (Blueprint $table) {
-        $table->string('request_name')->nullable();
-        $table->text('request_description')->nullable();
-    });
+         Schema::table('services', function (Blueprint $table) {
+            $table->string('icon')->nullable()->after('name'); 
         });
     }
 
-
-    
     /**
      * Reverse the migrations.
      */
     public function down(): void
     {
-        Schema::table('stakeholders', function (Blueprint $table) {
-            //
+        Schema::table('services', function (Blueprint $table) {
+            $table->dropColumn('icon'); // Rollback changes
         });
     }
 };

@@ -19,12 +19,12 @@ return new class extends Migration
 
             // Foreign key constraints with consistent naming
             $table->foreign('citizen_history_id')
-                ->references('citizen_history_id') // Correct reference to citizen_history table
+                ->references('citizen_history_id') 
                 ->on('citizen_history')
                 ->onDelete('cascade');
 
             $table->foreign('service_id')
-                ->references('id') // Correct reference to services table
+                ->references('id') 
                 ->on('services')
                 ->onDelete('cascade');
 

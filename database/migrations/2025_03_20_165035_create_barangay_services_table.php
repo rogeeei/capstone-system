@@ -11,8 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('stakeholders', function (Blueprint $table) {
-             $table->boolean('request_approved')->default(false); 
+         Schema::create('barangay_services', function (Blueprint $table) {
+            $table->id();
+            $table->string('brgy'); 
+            $table->foreignId('service_id')->constrained('services')->onDelete('cascade'); // Links to predefined services
+            $table->timestamps();
         });
     }
 
@@ -21,8 +24,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('stakeholders', function (Blueprint $table) {
-             $table->dropColumn('request_approved');
-        });
+        Schema::dropIfExists('barangay_services');
     }
 };

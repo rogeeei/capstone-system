@@ -18,11 +18,9 @@ return new class extends Migration
             $table->integer('quantity');
             $table->string('unit'); 
             $table->date('expiration_date');
-            $table->text('batch_no');
-            $table->text('location');
             $table->text('medicine_status');
             $table->date('date_acquired')->nullable();
-           $table->string('user_id');  // Store as string (e.g., UUID)
+           $table->string('user_id'); 
             
             // Foreign key to the users table
             $table->foreign('user_id')->references('user_id')->on('users')->onDelete('cascade');
