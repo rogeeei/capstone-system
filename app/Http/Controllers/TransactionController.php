@@ -152,9 +152,6 @@ public function getOverallMedicineAvailed()
     return response()->json($medicines);
 }
 
-
-
-
 public function show(Request $request, $citizen_id)
 {
     // Fetch citizen details with transactions, ensuring correct relationships
@@ -373,20 +370,23 @@ public function getMedicineAvailmentByBarangay(Request $request)
 public function getAllMedicineAvailment(Request $request)
 {
     try {
-        $medicines = Medicine::all();
+        // Get all distinct medicine names
+        $medicineNames = Medicine::select('name')->distinct()->pluck('name');
+
         $availmentData = [];
 
-        foreach ($medicines as $medicine) {
-            // Count all availments of the medicine (regardless of location)
+        foreach ($medicineNames as $name) {
+            // Get all medicine IDs with this name
+            $medicineIds = Medicine::where('name', $name)->pluck('medicine_id');
+
+            // Count all availments where any of those IDs were used
             $availmentCount = DB::table('citizen_medicine')
-                ->where('medicine_id', $medicine->medicine_id)
+                ->whereIn('medicine_id', $medicineIds)
                 ->count();
 
-            // Only include medicines that have at least one availment
             if ($availmentCount > 0) {
                 $availmentData[] = [
-                    'id' => $medicine->medicine_id,
-                    'name' => $medicine->name,
+                    'name' => $name,
                     'availment_count' => $availmentCount,
                 ];
             }
@@ -403,6 +403,31 @@ public function getAllMedicineAvailment(Request $request)
     }
 }
 
+
+//Profiling
+public function filterCitizenTransactionByMonthRange($citizenId, Request $request)
+{
+    $monthFrom = $request->query('month_from');
+    $monthTo = $request->query('month_to');
+
+    if (!$monthFrom || !$monthTo) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Both month_from and month_to are required.'
+        ], 400);
+    }
+
+    $transactions = Transaction::where('citizen_id', $citizenId)
+        ->whereBetween(\DB::raw('MONTH(transaction_date)'), [$monthFrom, $monthTo])
+        ->with(['citizenDetails', 'service', 'medicines']) // Eager load citizenDetails, service, and medicines
+        ->orderBy('transaction_date', 'asc')
+        ->get();
+
+    return response()->json([
+        'success' => true,
+        'transactions' => $transactions
+    ]);
+}
 
 
 

@@ -191,6 +191,8 @@ Route::controller(MedicineController::class)->group(function () {
     Route::get('/transactions/medicine-availment-all', [TransactionController::class, 'getAllMedicineAvailment']);
      Route::get('/medicine-availment', [TransactionController::class, 'getMedicineAvailmentByBarangay']);
     Route::get('/services/all', [ServicesController::class, 'getServices']);
+   Route::get('/transactions/{citizenId}/filter-by-month-range', [TransactionController::class, 'filterCitizenTransactionByMonthRange']);
+
     Route::get('/user-provinces', [UserController::class, 'getDistinctProvinces']);
     Route::get('/services/brgy', [ServicesController::class, 'getCitizenServicesByBarangay']);
     Route::get('/service/{serviceName}/age-distribution', [SummaryReportController::class, 'getServiceWithAgeDistribution']);
