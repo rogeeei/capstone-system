@@ -24,10 +24,34 @@ class SuperAdminController extends Controller
         
     }));
 }
+// In SuperAdminController.php
+
+public function getApprovedAdmin()
+{
+    $getAdmin = User::where('role', 'admin')
+                    ->where('approved', true)
+                    ->get();
+
+    return response()->json($getAdmin->map(function ($user) {
+        $user->role = ucfirst($user->role); // Capitalize first letter
+        return $user;
+    }));
+}
 
 public function getUsers()
 {
     $getUsers = User::where('role', 'user')->get();
+
+    return response()->json($getUsers->map(function ($user) {
+        $user->role = ucfirst($user->role); // Capitalize first letter
+        return $user;
+    }));
+}
+public function getApprovedUsers()
+{
+    $getUsers = User::where('role', 'user')
+                    ->where('approved', 1) // Only get approved users
+                    ->get();
 
     return response()->json($getUsers->map(function ($user) {
         $user->role = ucfirst($user->role); // Capitalize first letter

@@ -138,8 +138,9 @@ public function getOverallMedicineAvailed()
 {
     $medicines = DB::table('transactions')
         ->join('citizen_medicine', 'transactions.id', '=', 'citizen_medicine.transaction_id')
-        ->join('medicine', 'citizen_medicine.medicine_id', '=', 'medicine.medicine_id') // ✅ Corrected column name
-        ->select('medicine.name', DB::raw('SUM(citizen_medicine.quantity) as total_availed'))
+        ->join('medicine', 'citizen_medicine.medicine_id', '=', 'medicine.medicine_id')
+        ->join('citizen_details', 'citizen_medicine.citizen_id', '=', 'citizen_details.citizen_id') // Ensure you join citizen details if needed
+        ->select('medicine.name', DB::raw('COUNT(citizen_medicine.id) as total_availed')) // Count total availments
         ->groupBy('medicine.name')
         ->orderByDesc('total_availed')
         ->get();
@@ -150,6 +151,7 @@ public function getOverallMedicineAvailed()
 
     return response()->json($medicines);
 }
+
 
 
 
@@ -309,7 +311,7 @@ public function getAvailedCitizensByService($service_id)
         ]
     ]);
 }
-
+//Admin
 public function getMedicineAvailmentByBarangay(Request $request)
 {
     try {
@@ -363,6 +365,39 @@ public function getMedicineAvailmentByBarangay(Request $request)
     } catch (\Exception $e) {
         return response()->json([
             'message' => 'An error occurred while fetching medicine availment data.',
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+}
+//Superadmin
+public function getAllMedicineAvailment(Request $request)
+{
+    try {
+        $medicines = Medicine::all();
+        $availmentData = [];
+
+        foreach ($medicines as $medicine) {
+            // Count all availments of the medicine (regardless of location)
+            $availmentCount = DB::table('citizen_medicine')
+                ->where('medicine_id', $medicine->medicine_id)
+                ->count();
+
+            // Only include medicines that have at least one availment
+            if ($availmentCount > 0) {
+                $availmentData[] = [
+                    'id' => $medicine->medicine_id,
+                    'name' => $medicine->name,
+                    'availment_count' => $availmentCount,
+                ];
+            }
+        }
+
+        return response()->json([
+            'data' => $availmentData,
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'message' => 'An error occurred while fetching all medicine availment data.',
             'error' => $e->getMessage(),
         ], 500);
     }

@@ -48,6 +48,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/superadmin',                  'getAdmin');
         Route::get('/bhw',                  'getUsers');
         Route::get('/getalluser',                  'index');
+        Route::get('/superadmin/approved-admins', 'getApprovedAdmin');
+        Route::get('/approved-user', 'getApprovedUsers');
+
     });
   
 
@@ -185,6 +188,7 @@ Route::controller(MedicineController::class)->group(function () {
     Route::get('/demo/brgy/{barangay}', [SummaryReportController::class, 'getDemographicSummaryByBarangay']);
     Route::get('/services/{serviceId}/age-distribution', [SummaryReportController::class, 'getServiceWithAgeDistributionByBarangay']);
     Route::get('/services', [ServicesController::class, 'index']);
+    Route::get('/transactions/medicine-availment-all', [TransactionController::class, 'getAllMedicineAvailment']);
      Route::get('/medicine-availment', [TransactionController::class, 'getMedicineAvailmentByBarangay']);
     Route::get('/services/all', [ServicesController::class, 'getServices']);
     Route::get('/user-provinces', [UserController::class, 'getDistinctProvinces']);

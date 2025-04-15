@@ -135,7 +135,7 @@ public function getMedicine()
      */
 public function store(MedicineRequest $request)
 {
-    // Retrieve the validated input data...
+    // Retrieve the validated input data
     $validated = $request->validated();
 
     // Get the last medicine_id that starts with '100-'
@@ -151,31 +151,17 @@ public function store(MedicineRequest $request)
 
     // Assign the generated medicine_id and user_id (current logged-in user)
     $validated['medicine_id'] = $newMedicineId;
-    $validated['user_id'] = auth()->user()->user_id;  // Store the user_id from the logged-in user
+    $validated['user_id'] = auth()->user()->user_id;
 
     // Set default status based on quantity
     $validated['medicine_status'] = ($validated['quantity'] > 0) ? 'Available' : 'Out of Stock';
 
-    // Create the medicine record with the generated medicine_id and user_id
+    // Create the medicine record
     $medicine = Medicine::create($validated);
-
-    // Check if the quantity is 1 or more, then reduce by 1
-    if ($medicine->quantity > 0) {
-        $medicine->quantity -= 1; // Reduce by 1
-    }
-
-    // After reducing quantity, check if it reached 0
-    if ($medicine->quantity <= 0) {
-        $medicine->medicine_status = 'Out of Stock';
-    } else {
-        $medicine->medicine_status = 'Available';
-    }
-
-    // Save updated quantity and status
-    $medicine->save();
 
     return response()->json($medicine);
 }
+
 //Admin Report
 public function getMonthlyMedicineAvailed()
 {

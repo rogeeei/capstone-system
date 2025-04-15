@@ -516,13 +516,13 @@ public function getBarangayReport(Request $request)
             ->groupBy('medicine.name')
             ->get();
 
-        // ✅ Service Availment (Ensure distinct citizens)
+        // ✅ Service Availment (Count each availment, even if the citizen is the same)
         $serviceData = Transaction::join('services', 'transactions.service_id', '=', 'services.id')
             ->join('citizen_details', 'transactions.citizen_id', '=', 'citizen_details.citizen_id')
             ->where('citizen_details.barangay', $barangay)
             ->where('citizen_details.municipality', $municipality)
             ->where('citizen_details.province', $province)
-            ->selectRaw("services.name as service_name, COUNT(DISTINCT transactions.citizen_id) as total_availed")
+            ->selectRaw("services.name as service_name, COUNT(transactions.citizen_id) as total_availed") // Count all availments
             ->groupBy('services.name')
             ->get();
 
@@ -549,6 +549,7 @@ public function getBarangayReport(Request $request)
         ], 500);
     }
 }
+
 
 
 
