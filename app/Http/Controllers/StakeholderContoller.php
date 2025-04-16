@@ -42,7 +42,6 @@ public function store(Request $request)
     ], 201);
 }
 
-
 public function getLoggedStakeholderProvinceReport()
 {
     try {
@@ -53,16 +52,16 @@ public function getLoggedStakeholderProvinceReport()
         if (!$stakeholder || !$stakeholder->province) {
             return response()->json([
                 "success" => false,
-                "error" => "Stakeholder province not found."
+                "error" => "Stakeholder province not found. Please ensure the stakeholder has a province assigned."
             ], 400);
         }
 
         $province = $stakeholder->province;
 
         // ✅ Fetch distinct municipalities where users are approved
-        $municipalities = User::where('province', $province)
+        $municipalities = Stakeholder::where('province', $province)
             ->whereNotNull('municipality')
-            ->where('approved', true) // ✅ Only include approved users
+            ->where('is_approved', true) // ✅ Only include approved users
             ->distinct()
             ->pluck('municipality');
 
@@ -134,7 +133,13 @@ public function getLoggedStakeholderProvinceReport()
 
         return response()->json([
             "success" => true,
-            "message" => "Comprehensive report for province: $province",
+            "message" => "Comprehensive report for province: " . $province,
+            "stakeholder" => [
+                "agency_name" => $stakeholder->agency_name ?? 'Not available', // Use fallback if null
+                "province" => $stakeholder->province,
+                "municipality" => $stakeholder->municipality,
+                "barangay" => $stakeholder->barangay,
+            ],
             "province" => $province,
             "municipalities" => $municipalities,
             "totalPopulation" => $totalPopulation,
@@ -142,8 +147,9 @@ public function getLoggedStakeholderProvinceReport()
             "ageGroups" => $ageGroups,
             "bmiData" => $bmiData,
             "medicineData" => $medicineData,
-            "serviceData" => $serviceData
+            "serviceData" => $serviceData,
         ]);
+        
     } catch (\Exception $e) {
         return response()->json([
             "success" => false,
@@ -155,14 +161,21 @@ public function getLoggedStakeholderProvinceReport()
     }
 }
 
+
+
+
+
 public function getStakeholderMunicipalityReport(Request $request, $municipality)
 {
     try {
-        // ✅ Get the province from the logged-in user
-        $user = auth()->user();
-        $province = $user->province;
+      $user = auth()->user();
 
-        // ✅ Validate if municipality is provided
+// Stakeholder info
+$province = $user->province;
+$municipality = $user->municipality;
+$barangay = $user->brgy;
+$agency_name = $user->agency_name;
+
         if (!$municipality) {
             return response()->json([
                 "success" => false,
@@ -170,13 +183,11 @@ public function getStakeholderMunicipalityReport(Request $request, $municipality
             ], 400);
         }
 
-        // ✅ Total Population by Municipality
         $totalPopulation = CitizenDetails::where('province', $province)
             ->where('municipality', $municipality)
             ->distinct('citizen_id')
             ->count();
 
-        // ✅ Gender Distribution
         $genderDistribution = CitizenDetails::selectRaw("CASE 
                 WHEN LOWER(gender) IN ('male', 'm') THEN 'Male'
                 WHEN LOWER(gender) IN ('female', 'f') THEN 'Female'
@@ -187,7 +198,6 @@ public function getStakeholderMunicipalityReport(Request $request, $municipality
             ->groupBy('gender')
             ->pluck('count', 'gender');
 
-        // ✅ Age Distribution
         $ageGroups = CitizenDetails::selectRaw("CASE 
                 WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 0 AND 2 THEN 'Infant'
                 WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 3 AND 5 THEN 'Toddler'
@@ -204,7 +214,6 @@ public function getStakeholderMunicipalityReport(Request $request, $municipality
             ->groupBy('age_group')
             ->pluck('count', 'age_group');
 
-        // ✅ BMI Classification
         $bmiData = CitizenDetails::where('province', $province)
             ->where('municipality', $municipality)
             ->whereNotNull('height')
@@ -223,7 +232,6 @@ public function getStakeholderMunicipalityReport(Request $request, $municipality
             })
             ->map(fn($group) => $group->count());
 
-        // ✅ Medicine Availment by Municipality
         $medicineData = DB::table('citizen_medicine')
             ->join('medicine', 'citizen_medicine.medicine_id', '=', 'medicine.medicine_id')
             ->join('citizen_details', 'citizen_medicine.citizen_id', '=', 'citizen_details.citizen_id')
@@ -233,7 +241,6 @@ public function getStakeholderMunicipalityReport(Request $request, $municipality
             ->groupBy('medicine.name')
             ->get();
 
-        // ✅ Service Availment by Municipality
         $serviceData = Transaction::join('services', 'transactions.service_id', '=', 'services.id')
             ->join('citizen_details', 'transactions.citizen_id', '=', 'citizen_details.citizen_id')
             ->where('citizen_details.province', $province)
@@ -242,7 +249,6 @@ public function getStakeholderMunicipalityReport(Request $request, $municipality
             ->groupBy('services.name')
             ->get();
 
-        // ✅ Fetch Barangays under the Municipality (Only from Approved Users)
         $barangays = User::where('municipality', $municipality)
             ->where('approved', true)
             ->whereNotNull('brgy')
@@ -250,18 +256,27 @@ public function getStakeholderMunicipalityReport(Request $request, $municipality
             ->pluck('brgy');
 
         return response()->json([
-            "success" => true,
-            "message" => "Municipality report retrieved successfully.",
-            "province" => $province,
-            "municipality" => $municipality,
-            "totalPopulation" => $totalPopulation,
-            "genderDistribution" => $genderDistribution,
-            "ageGroups" => $ageGroups,
-            "bmiData" => $bmiData,
-            "medicineData" => $medicineData,
-            "serviceData" => $serviceData,
-            "barangays" => $barangays
-        ]);
+    "success" => true,
+    "message" => "Municipality report retrieved successfully.",
+    
+    // ✅ Stakeholder Info
+    "stakeholder" => [
+        "agency_name" => $agency_name,
+        "province" => $province,
+        "municipality" => $municipality,
+        "barangay" => $barangay,
+    ],
+
+    // ✅ Report Data
+    "totalPopulation" => $totalPopulation,
+    "genderDistribution" => $genderDistribution,
+    "ageGroups" => $ageGroups,
+    "bmiData" => $bmiData,
+    "medicineData" => $medicineData,
+    "serviceData" => $serviceData,
+    "barangays" => $barangays
+]);
+
     } catch (\Exception $e) {
         return response()->json([
             "success" => false,
@@ -277,6 +292,9 @@ public function getStakeholderBarangayReport(Request $request, $barangay)
         // ✅ Get the province from the logged-in user
         $user = auth()->user();
         $province = $user->province;
+
+        // ✅ Ensure agency_name is included in the response, even if it's null
+        $agencyName = $user->agency_name ?? 'Not available';
 
         // ✅ Validate if barangay is provided
         if (!$barangay) {
@@ -376,19 +394,21 @@ public function getStakeholderBarangayReport(Request $request, $barangay)
             ->groupBy('services.name')
             ->get();
 
-        return response()->json([
-            "success" => true,
-            "message" => "Barangay report retrieved successfully.",
-            "province" => $province,
-            "municipality" => $municipality,
-            "barangay" => $barangay,
-            "totalPopulation" => $totalPopulation,
-            "genderDistribution" => $genderDistribution,
-            "ageGroups" => $ageGroups,
-            "bmiData" => $bmiData,
-            "medicineData" => $medicineData,
-            "serviceData" => $serviceData
-        ]);
+       return response()->json([
+    "success" => true,
+    "message" => "Barangay report retrieved successfully.",
+    "province" => $province,
+    "municipality" => $municipality,
+    "barangay" => $barangay,
+    "agency_name" => $user->agency_name,  // Ensure this is included
+    "totalPopulation" => $totalPopulation,
+    "genderDistribution" => $genderDistribution,
+    "ageGroups" => $ageGroups,
+    "bmiData" => $bmiData,
+    "medicineData" => $medicineData,
+    "serviceData" => $serviceData
+]);
+
     } catch (\Exception $e) {
         return response()->json([
             "success" => false,
@@ -397,6 +417,7 @@ public function getStakeholderBarangayReport(Request $request, $barangay)
         ], 500);
     }
 }
+
 
 
 

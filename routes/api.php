@@ -189,7 +189,10 @@ Route::controller(MedicineController::class)->group(function () {
     Route::get('/services/{serviceId}/age-distribution', [SummaryReportController::class, 'getServiceWithAgeDistributionByBarangay']);
     Route::get('/services', [ServicesController::class, 'index']);
     Route::get('/transactions/medicine-availment-all', [TransactionController::class, 'getAllMedicineAvailment']);
+    Route::get('/services/service-availment-all', [TransactionController::class, 'getAllServiceAvailments']);
      Route::get('/medicine-availment', [TransactionController::class, 'getMedicineAvailmentByBarangay']);
+Route::get('/service-availment', [TransactionController::class, 'getServiceAvailmentByBarangay']);
+Route::get('/bmi-citizens', [TransactionController::class, 'getCitizensByBmi']);
     Route::get('/services/all', [ServicesController::class, 'getServices']);
    Route::get('/transactions/{citizenId}/filter-by-month-range', [TransactionController::class, 'filterCitizenTransactionByMonthRange']);
 

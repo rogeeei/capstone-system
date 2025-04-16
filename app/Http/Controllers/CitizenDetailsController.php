@@ -202,14 +202,14 @@ public function store(CitizenDetailsRequest $request)
         return response()->json(['error' => 'Unauthorized'], 401);
     }
 
-    // ✅ Validate the incoming request (excluding municipality & province)
+    // ✅ Validate the incoming request (including the new bmi_category)
     $validated = $request->validate([
         'firstname' => 'required|string',
         'middle_name' => 'nullable|string|max:255',
         'lastname' => 'required|string',
         'suffix' => 'nullable|string',
         'purok' => 'required|string',
-        'barangay' => 'required|string', // Keep barangay input since users manage their own barangay
+        'barangay' => 'required|string',
         'date_of_birth' => 'required|date|date_format:Y-m-d',
         'gender' => 'required|string',
         'blood_type' => 'nullable|string',
@@ -224,6 +224,24 @@ public function store(CitizenDetailsRequest $request)
     // ✅ Automatically set the user's municipality and province
     $validated['municipality'] = $user->municipality;
     $validated['province'] = $user->province;
+
+    // ✅ Calculate BMI category
+    $heightInMeters = (float) $validated['height'] / 100;  // Assuming height is in cm
+    $weightInKg = (float) $validated['weight']; // Assuming weight is in kg
+    $bmi = $weightInKg / ($heightInMeters * $heightInMeters);
+
+    if ($bmi < 18.5) {
+        $bmiCategory = 'Underweight';
+    } elseif ($bmi >= 18.5 && $bmi <= 24.9) {
+        $bmiCategory = 'Normal weight';
+    } elseif ($bmi >= 25 && $bmi <= 29.9) {
+        $bmiCategory = 'Overweight';
+    } else {
+        $bmiCategory = 'Obese';
+    }
+
+    // Add bmi_category to validated data
+    $validated['bmi_category'] = $bmiCategory;
 
     // ✅ Check if citizen already exists
     $existingCitizen = CitizenDetails::where('firstname', $validated['firstname'])
@@ -261,7 +279,7 @@ public function store(CitizenDetailsRequest $request)
 
         return response()->json([
             'citizen_history' => $citizenHistory,
-            'isNew' => false, 
+            'isNew' => false,
         ], 200);
     }
 
@@ -274,7 +292,7 @@ public function store(CitizenDetailsRequest $request)
     $newCitizenId = '200-' . str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
     $validated['citizen_id'] = $newCitizenId;
 
-    // ✅ Create a new citizen record
+    // ✅ Create a new citizen record with bmi_category
     $citizen = CitizenDetails::create($validated);
 
     // ✅ Add new citizen to history
@@ -304,6 +322,7 @@ public function store(CitizenDetailsRequest $request)
         'isNew' => !$citizen->exists,
     ], 201);
 }
+
 
 
 

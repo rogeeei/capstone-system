@@ -8,6 +8,8 @@ use App\Models\CitizenDetails;
 use App\Models\Services;
 use App\Models\Medicine;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
+
 
 
 
@@ -429,7 +431,199 @@ public function filterCitizenTransactionByMonthRange($citizenId, Request $reques
     ]);
 }
 
+// Admin
+public function getServiceAvailmentByBarangay(Request $request)
+{
+    try {
+        $user = auth()->user();  // Get the logged-in user
+        $role = $user->role ?? null;
 
+        // Get the barangay, municipality, and province from the logged-in user
+        $barangay = $role === 'superadmin'
+            ? $request->query('barangay')
+            : ($user->brgy ?? null);
+
+        $municipality = $user->municipality ?? null;
+        $province = $user->province ?? null;
+
+        if (!$barangay || !$municipality || !$province) {
+            return response()->json([
+                'message' => 'Missing required information (barangay, municipality, or province).',
+            ], 400);
+        }
+
+        // Get all services (if they are predefined in the `services` table)
+        $services = DB::table('services')->get();  // Assuming you have a services table
+        if ($services->isEmpty()) {
+            return response()->json([
+                'message' => 'No services available.',
+            ], 404);
+        }
+
+        $availmentData = [];
+
+        // Loop through each service and count the number of citizens that availed it
+        foreach ($services as $service) {
+            // Query the transaction table for service availment data
+            $availmentCount = DB::table('transactions')  // Assuming transactions table contains service availment records
+                ->join('citizen_details', 'transactions.citizen_id', '=', 'citizen_details.citizen_id')
+                ->where('citizen_details.barangay', $barangay)
+                ->where('citizen_details.municipality', $municipality)
+                ->where('citizen_details.province', $province)
+                ->where('transactions.service_id', $service->id)  // Ensure you are checking the correct field for service_id
+                ->count();  // Count how many transactions occurred for the service in the given barangay
+
+            // Only include services that have any availments
+            if ($availmentCount > 0) {
+                $availmentData[] = [
+                    'id' => $service->id,
+                    'name' => $service->name,
+                    'availment_count' => $availmentCount,
+                ];
+            }
+        }
+
+        // Debugging: Log the availment data
+        \Log::debug('Service Availment Data:', $availmentData);
+
+        if (empty($availmentData)) {
+            return response()->json([
+                'message' => 'No availment data found for the given barangay.',
+                'barangay' => $barangay,
+                'municipality' => $municipality,
+                'province' => $province,
+            ], 404);
+        }
+
+        return response()->json([
+            'barangay' => $barangay,
+            'municipality' => $municipality,
+            'province' => $province,
+            'data' => $availmentData,
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'message' => 'An error occurred while fetching service availment data.',
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+}
+
+//SuperAdmin
+public function getAllServiceAvailments()
+{
+    try {
+        // Get all predefined services
+        $services = DB::table('services')->get(); // Assuming you have a `services` table
+
+        if ($services->isEmpty()) {
+            return response()->json([
+                'message' => 'No services available.',
+            ], 404);
+        }
+
+        $availmentData = [];
+
+        // Loop through each service and count the total availment across all locations
+        foreach ($services as $service) {
+            $availmentCount = DB::table('transactions')
+                ->where('service_id', $service->id)
+                ->count();
+
+            if ($availmentCount > 0) {
+                $availmentData[] = [
+                    'id' => $service->id,
+                    'name' => $service->name,
+                    'availment_count' => $availmentCount,
+                ];
+            }
+        }
+
+        // Log for debugging
+        \Log::debug('All Service Availment Data:', $availmentData);
+
+        if (empty($availmentData)) {
+            return response()->json([
+                'message' => 'No availment data found.',
+            ], 404);
+        }
+
+        return response()->json([
+            'data' => $availmentData,
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'message' => 'An error occurred while fetching all service availment data.',
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+}
+
+//Admin
+public function getCitizensByBmi(Request $request)
+{
+    // Get the authenticated user
+    $user = Auth::user();  
+    
+    // Check if the user is authenticated
+    if (!$user) {
+        return response()->json(['success' => false, 'message' => 'User not authenticated'], 401);
+    }
+
+    // Get BMI classification from the query string
+    $bmiCategory = $request->query('classification');  
+    
+    // Ensure BMI category is provided
+    if (!$bmiCategory) {
+        return response()->json(['success' => false, 'message' => 'BMI classification not provided'], 400);
+    }
+
+    // Fetch citizens with valid height and weight based on user's location
+    $citizens = CitizenDetails::where('barangay', $user->barangay)
+                              ->where('municipality', $user->municipality)
+                              ->where('province', $user->province)
+                              ->whereNotNull('height')
+                              ->whereNotNull('weight')
+                              ->get();
+
+    // Log the raw citizen data for debugging
+    \Log::info('Raw Citizens Data', $citizens->toArray());
+
+    // Filter the citizens based on BMI classification
+    $filteredCitizens = $citizens->filter(function ($citizen) use ($bmiCategory) {
+        $height = floatval($citizen->height) / 100; // Convert cm to meters
+        $weight = floatval($citizen->weight);
+
+        if ($height <= 0) return false;  // Skip invalid height
+
+        // Calculate BMI
+        $bmi = $weight / ($height * $height);
+
+        // Log BMI value for debugging
+        \Log::info("Citizen BMI", ['citizen_id' => $citizen->citizen_id, 'bmi' => $bmi]);
+
+        // Classify and return based on bmiCategory
+        if ($bmiCategory === 'Underweight' && $bmi < 18.5) return true;
+        if ($bmiCategory === 'Normal' && $bmi >= 18.5 && $bmi <= 24.9) return true;
+        if ($bmiCategory === 'Overweight' && $bmi >= 25 && $bmi <= 29.9) return true;
+        if ($bmiCategory === 'Obese' && $bmi >= 30) return true;
+
+        return false;
+    });
+
+    // Convert the filtered citizens to a proper indexed array
+    $filteredCitizensArray = $filteredCitizens->values()->toArray();
+
+    // Log the filtered result for debugging
+    \Log::info('Filtered Citizens', $filteredCitizensArray);
+
+    // Return filtered citizens data in the response
+    if (count($filteredCitizensArray) > 0) {
+        return response()->json(['success' => true, 'data' => $filteredCitizensArray]);
+    } else {
+        return response()->json(['success' => false, 'message' => 'No citizens found for this BMI classification.'], 404);
+    }
+}
 
 
 
