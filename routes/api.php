@@ -29,7 +29,7 @@ use App\Http\Controllers\TransactionController;
 */
 
 //Public API
-Route::post('/login', [AuthController::class, 'login'])->name('login');
+Route::post('/login', [AuthController::class, 'login'])->name('user.login');
 Route::post('/user', [UserController::class, 'store'])->name('user.store');
 Route::post('/stakeholders',  [StakeholderContoller::class, 'store']);
 Route::post('/stakeholders/login',  [AuthController::class, 'stakeholderLogin']);
