@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -12,8 +11,8 @@ use Illuminate\Support\Facades\Route;
 | be assigned to the "web" middleware group. Make something great!
 |
 */
-
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Route;
 
 Route::get('/fix-cors', function () {
     Artisan::call('optimize:clear');
@@ -22,4 +21,5 @@ Route::get('/fix-cors', function () {
     Artisan::call('view:clear');
     return 'All caches cleared!';
 });
+
 
