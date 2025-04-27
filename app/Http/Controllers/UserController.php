@@ -174,26 +174,25 @@ public function getUsersWithMedicinesByBrgy()
     /**
      * Store a newly created resource in storage.
      */
-public function store(UserRequest $request): JsonResponse // ✅ Correct return type
+public function store(UserRequest $request): JsonResponse 
 {
     $validated = $request->validated();
     $validated['password'] = Hash::make($validated['password']);
 
-    // Get the last user_id that starts with '211-'
+
     $lastUser = User::where('user_id', 'like', '211-%')
                     ->orderBy('user_id', 'desc')
                     ->first();
 
-    // Extract the incrementing number, remove the '211-' prefix
     $lastNumber = $lastUser ? (int) substr($lastUser->user_id, 4) : 0;
 
-    // Increment the number and format it with leading zeros
+    
     $newUserId = '211-' . str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
 
-    // Assign the generated user_id
+  
     $validated['user_id'] = $newUserId;
 
-    // Create the user with the generated user_id
+    
     $user = User::create($validated);
 
     return response()->json([

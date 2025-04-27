@@ -56,8 +56,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     //Admin APIs
     Route::post('/admin/users', [AdminController::class, 'addUser']);
-   Route::patch('/users/{userId}/approve', [AdminController::class, 'approveUser']);
-    Route::patch('/user/decline/{id}', [AdminController::class, 'declineUser']);
+   Route::post('/users/{userId}/approve', [AdminController::class, 'approveUser']);
+    Route::post('/user/decline/{id}', [AdminController::class, 'declineUser']);
 
     // Stakeholder API
     Route::controller(StakeholderContoller::class)->group(function () {
@@ -127,7 +127,7 @@ Route::controller(MedicineController::class)->group(function () {
     
 
     // Ensure this route is inside the group
-    Route::patch('/medicine/{medicine_id}/update-stock', 'updateMedicineStock');
+    Route::post('/medicine/{medicine_id}/update-stock', 'updateMedicineStock');
 });
 
 

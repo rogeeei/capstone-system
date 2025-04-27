@@ -53,7 +53,7 @@ public function login(Request $request)
 
     return response()->json([
         'message' => 'Login successful',
-        'role' => $user->role,  // ✅ Returning the role
+        'role' => $user->role,  
         'token' => $token,
         'username' => $user->username,
     ], 200);

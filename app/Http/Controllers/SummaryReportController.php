@@ -134,13 +134,13 @@ public function getDemographicSummaryByBarangay($barangay)
 
 public function getDemographicSummaryByProvince(Request $request)
 {
-    $province = $request->query('province'); // Get province from URL
+    $province = $request->query('province');
 
     if (!$province) {
         return response()->json(['error' => 'Province parameter is required'], 400);
     }
     try {
-        // **Age group calculation per province**
+      
         $ageGroups = CitizenDetails::selectRaw("
             CASE 
                 WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 0 AND 2 THEN 'Infant'
@@ -153,7 +153,7 @@ public function getDemographicSummaryByProvince(Request $request)
                 ELSE 'Elderly' 
             END as age_group, COUNT(DISTINCT citizen_id) as count
         ")
-        ->where('province', $province) // Filter by province
+        ->where('province', $province) 
         ->whereNotNull('date_of_birth')
         ->groupBy('age_group')
         ->get()
@@ -161,14 +161,14 @@ public function getDemographicSummaryByProvince(Request $request)
             return [$item->age_group => $item->count];
         });
 
-        // **Gender distribution per province**
+        
         $genderDistribution = CitizenDetails::selectRaw("
             CASE 
                 WHEN LOWER(gender) IN ('male', 'm') THEN 'Male'
                 WHEN LOWER(gender) IN ('female', 'f') THEN 'Female'
             END as gender, COUNT(DISTINCT citizen_id) as count
         ")
-        ->where('province', $province) // Filter by province
+        ->where('province', $province)
         ->whereIn('gender', ['Male', 'male', 'Female', 'female', 'M', 'm', 'F', 'f'])
         ->groupBy('gender')
         ->get()
