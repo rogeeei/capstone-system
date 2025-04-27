@@ -3,10 +3,6 @@
 namespace App\Http;
 
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
-use Illuminate\Http\Middleware\HandleCors;
-
-
-
 
 class Kernel extends HttpKernel
 {
@@ -17,18 +13,15 @@ class Kernel extends HttpKernel
      *
      * @var array<int, class-string|string>
      */
-   protected $middleware = [
-
-    \Illuminate\Http\Middleware\HandleCors::class,  
-    \App\Http\Middleware\TrustHosts::class,
-    \App\Http\Middleware\TrustProxies::class,
-    \App\Http\Middleware\PreventRequestsDuringMaintenance::class,
-    \Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
-    \App\Http\Middleware\TrimStrings::class,
-    \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
-    
-];
-
+    protected $middleware = [
+        \Illuminate\Http\Middleware\HandleCors::class,
+        \App\Http\Middleware\TrustHosts::class,
+        \App\Http\Middleware\TrustProxies::class,
+        \App\Http\Middleware\PreventRequestsDuringMaintenance::class,
+        \Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
+        \App\Http\Middleware\TrimStrings::class,
+        \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
+    ];
 
     /**
      * The application's route middleware groups.
@@ -44,14 +37,13 @@ class Kernel extends HttpKernel
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ],
-'api' => [
-    \Illuminate\Http\Middleware\HandleCors::class,
-    \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-    'throttle:api',
-    \Illuminate\Routing\Middleware\SubstituteBindings::class,
-],
 
-
+        'api' => [
+            \Illuminate\Http\Middleware\HandleCors::class,
+            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+            'throttle:api',
+            \Illuminate\Routing\Middleware\SubstituteBindings::class,
+        ],
     ];
 
     /**
