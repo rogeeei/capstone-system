@@ -195,112 +195,81 @@ public function getTransaction(string $citizenId)
 
 public function store(CitizenDetailsRequest $request)
 {
-    // ✅ Get the authenticated user
     $user = auth()->user();
-
     if (!$user) {
         return response()->json(['error' => 'Unauthorized'], 401);
     }
 
-    // ✅ Validate the incoming request (including the new bmi_category)
-    $validated = $request->validate([
-        'firstname' => 'required|string',
-        'middle_name' => 'nullable|string|max:255',
-        'lastname' => 'required|string',
-        'suffix' => 'nullable|string',
-        'purok' => 'required|string',
-        'barangay' => 'required|string',
-        'date_of_birth' => 'required|date|date_format:Y-m-d',
-        'gender' => 'required|string',
-        'blood_type' => 'nullable|string',
-        'height' => 'required|string',
-        'weight' => 'required|string',
-        'allergies' => 'nullable|string',
-        'medication' => 'nullable|string',
-        'emergency_contact_name' => 'required|string',
-        'emergency_contact_no' => 'required|string',
-    ]);
-
-    // ✅ Automatically set the user's municipality and province
+    $validated = $request->validated();
     $validated['municipality'] = $user->municipality;
     $validated['province'] = $user->province;
 
-    // ✅ Calculate BMI category
-    $heightInMeters = (float) $validated['height'] / 100;  // Assuming height is in cm
-    $weightInKg = (float) $validated['weight']; // Assuming weight is in kg
-    $bmi = $weightInKg / ($heightInMeters * $heightInMeters);
-
-    if ($bmi < 18.5) {
-        $bmiCategory = 'Underweight';
-    } elseif ($bmi >= 18.5 && $bmi <= 24.9) {
-        $bmiCategory = 'Normal weight';
-    } elseif ($bmi >= 25 && $bmi <= 29.9) {
-        $bmiCategory = 'Overweight';
-    } else {
-        $bmiCategory = 'Obese';
-    }
-
-    // Add bmi_category to validated data
+    $bmi = $this->calculateBMI($validated['height'], $validated['weight']);
+    $bmiCategory = $this->getBmiCategory($bmi);
     $validated['bmi_category'] = $bmiCategory;
 
-    // ✅ Check if citizen already exists
-    $existingCitizen = CitizenDetails::where('firstname', $validated['firstname'])
-        ->where('lastname', $validated['lastname'])
-        ->where('middle_name', $validated['middle_name'])
-        ->where('date_of_birth', $validated['date_of_birth'])
-        ->where('purok', $validated['purok'])
-        ->where('barangay', $validated['barangay'])
-        ->where('municipality', $validated['municipality'])
-        ->where('gender', $validated['gender'])
-        ->first();
+    // Check for existing citizen
+    $existingCitizen = CitizenDetails::where([
+        ['firstname', $validated['firstname']],
+        ['lastname', $validated['lastname']],
+        ['middle_name', $validated['middle_name']],
+        ['date_of_birth', $validated['date_of_birth']],
+        ['purok', $validated['purok']],
+        ['barangay', $validated['barangay']],
+        ['municipality', $validated['municipality']],
+        ['gender', $validated['gender']]
+    ])->first();
 
     if ($existingCitizen) {
-        // ✅ Add to citizen history instead of creating a new record
-        $citizenHistory = CitizenHistory::create([
-            'citizen_id' => $existingCitizen->citizen_id,
-            'firstname' => $existingCitizen->firstname,
-            'middle_name' => $existingCitizen->middle_name,
-            'lastname' => $existingCitizen->lastname,
-            'suffix' => $existingCitizen->suffix,
-            'purok' => $existingCitizen->purok,
-            'barangay' => $existingCitizen->barangay,
-            'municipality' => $existingCitizen->municipality,
-            'province' => $existingCitizen->province,
-            'date_of_birth' => $existingCitizen->date_of_birth,
-            'gender' => $existingCitizen->gender,
-            'blood_type' => $existingCitizen->blood_type,
-            'height' => $existingCitizen->height,
-            'weight' => $existingCitizen->weight,
-            'allergies' => $existingCitizen->allergies,
-            'medication' => $existingCitizen->medication,
-            'emergency_contact_name' => $existingCitizen->emergency_contact_name,
-            'emergency_contact_no' => $existingCitizen->emergency_contact_no,
-        ]);
-
+        // Store citizen history and return response
+        $citizenHistory = $this->createCitizenHistory($existingCitizen);
         return response()->json([
             'citizen_history' => $citizenHistory,
             'isNew' => false,
         ], 200);
     }
 
-    // ✅ Generate new Citizen ID
-    $lastCitizen = CitizenDetails::where('citizen_id', 'like', '200-%')
-        ->orderBy('citizen_id', 'desc')
-        ->first();
-    
-    $lastNumber = $lastCitizen ? (int) substr($lastCitizen->citizen_id, 4) : 0;
-    $newCitizenId = '200-' . str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
+    // Generate new Citizen ID and create citizen record
+    $newCitizenId = $this->generateCitizenId();
     $validated['citizen_id'] = $newCitizenId;
 
-    // ✅ Create a new citizen record with bmi_category
     $citizen = CitizenDetails::create($validated);
+    $citizenHistory = $this->createCitizenHistory($citizen);
 
-    // ✅ Add new citizen to history
-    $citizenHistory = CitizenHistory::create([
+    return response()->json([
+        'citizen' => $citizen,
+        'citizen_history' => $citizenHistory,
+        'isNew' => !$citizen->exists,
+    ], 201);
+}
+
+protected function calculateBMI($height, $weight)
+{
+    $heightInMeters = (float) $height / 100;
+    $weightInKg = (float) $weight;
+    return $weightInKg / ($heightInMeters * $heightInMeters);
+}
+
+protected function getBmiCategory($bmi)
+{
+    if ($bmi < 18.5) {
+        return 'Underweight';
+    } elseif ($bmi >= 18.5 && $bmi <= 24.9) {
+        return 'Normal weight';
+    } elseif ($bmi >= 25 && $bmi <= 29.9) {
+        return 'Overweight';
+    }
+    return 'Obese';
+}
+
+protected function createCitizenHistory($citizen)
+{
+    return CitizenHistory::create([
         'citizen_id' => $citizen->citizen_id,
         'firstname' => $citizen->firstname,
         'middle_name' => $citizen->middle_name,
         'lastname' => $citizen->lastname,
+        'suffix' => $citizen->suffix,
         'purok' => $citizen->purok,
         'barangay' => $citizen->barangay,
         'municipality' => $citizen->municipality,
@@ -315,12 +284,16 @@ public function store(CitizenDetailsRequest $request)
         'emergency_contact_name' => $citizen->emergency_contact_name,
         'emergency_contact_no' => $citizen->emergency_contact_no,
     ]);
+}
 
-    return response()->json([
-        'citizen' => $citizen,
-        'citizen_history' => $citizenHistory,
-        'isNew' => !$citizen->exists,
-    ], 201);
+protected function generateCitizenId()
+{
+    $lastCitizen = CitizenDetails::where('citizen_id', 'like', '200-%')
+        ->orderBy('citizen_id', 'desc')
+        ->first();
+
+    $lastNumber = $lastCitizen ? (int) substr($lastCitizen->citizen_id, 4) : 0;
+    return '200-' . str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
 }
 
 
