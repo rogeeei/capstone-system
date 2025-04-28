@@ -291,8 +291,8 @@
       'mysql' => 
       array (
         'driver' => 'mysql',
-        'host' => 'ballast.proxy.rlwy.net',
-        'port' => '14081',
+        'host' => 'mysql.railway.internal',
+        'port' => '3306',
         'database' => 'railway',
         'username' => 'root',
         'password' => 'fpGqsUeergCsaBfBBwJaJOKEhYVcbvAd',
@@ -311,8 +311,8 @@
       array (
         'driver' => 'pgsql',
         'url' => NULL,
-        'host' => 'ballast.proxy.rlwy.net',
-        'port' => '14081',
+        'host' => 'mysql.railway.internal',
+        'port' => '3306',
         'database' => 'railway',
         'username' => 'root',
         'password' => 'fpGqsUeergCsaBfBBwJaJOKEhYVcbvAd',
@@ -326,8 +326,8 @@
       array (
         'driver' => 'sqlsrv',
         'url' => NULL,
-        'host' => 'ballast.proxy.rlwy.net',
-        'port' => '14081',
+        'host' => 'mysql.railway.internal',
+        'port' => '3306',
         'database' => 'railway',
         'username' => 'root',
         'password' => 'fpGqsUeergCsaBfBBwJaJOKEhYVcbvAd',
