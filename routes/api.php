@@ -17,6 +17,7 @@ use App\Http\Controllers\StakeholderContoller;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\TransactionController;
 
+
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -35,7 +36,9 @@ Route::post('/stakeholders',  [StakeholderContoller::class, 'store']);
 Route::post('/stakeholders/login',  [AuthController::class, 'stakeholderLogin']);
 
 
-
+Route::get('/', function () {
+    return response()->json(['message' => 'API is working!']);
+});
 
 //Private API
 Route::middleware(['auth:sanctum'])->group(function () {

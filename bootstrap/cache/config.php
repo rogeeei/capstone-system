@@ -3,7 +3,7 @@
   array (
     'name' => 'Laravel',
     'env' => 'production',
-    'debug' => false,
+    'debug' => true,
     'url' => 'https://capstone-system-production-9294.up.railway.app',
     'asset_url' => NULL,
     'timezone' => 'UTC',
