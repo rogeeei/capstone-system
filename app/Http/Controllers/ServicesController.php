@@ -51,20 +51,17 @@ public function getServices()
 
 public function getServicesByBarangay()
 {
-    $userBarangay = auth()->user()->brgy;
+    $userBarangay = auth()->user()->brgy; // Get the logged-in user's barangay
 
-    // Cache for a reasonable period (e.g., 60 minutes)
-    $services = Cache::remember("services_by_barangay_{$userBarangay}", 60, function () use ($userBarangay) {
-        return DB::table('barangay_services')
-            ->join('services', 'barangay_services.service_id', '=', 'services.id')
-            ->where('barangay_services.brgy', $userBarangay)
-            ->select('services.id', 'services.name', 'services.icon')
-            ->get();
-    });
+    // Retrieve services assigned to the user's barangay
+    $services = DB::table('barangay_services')
+        ->join('services', 'barangay_services.service_id', '=', 'services.id')
+        ->where('barangay_services.brgy', $userBarangay)
+        ->select('services.id', 'services.name', 'services.icon') // ✅ Select the icon too
+        ->get();
 
     return response()->json($services);
 }
-
 
 
 
