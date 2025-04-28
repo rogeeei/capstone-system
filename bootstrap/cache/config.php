@@ -260,7 +260,7 @@
     array (
       0 => 'https://healthy-barrio.vercel.app',
       1 => 'https://healthy-barrio-7yy6i5f1n-rogeeeis-projects.vercel.app',
-      2 => 'healthy-barrio-git-main-rogeeeis-projects.vercel.app',
+      2 => 'https://healthy-barrio-git-main-rogeeeis-projects.vercel.app',
       3 => 'http://127.0.0.1:5500',
     ),
     'allowed_origins_patterns' => 
