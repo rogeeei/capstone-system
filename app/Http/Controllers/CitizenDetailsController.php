@@ -18,19 +18,23 @@ public function index(Request $request)
 {
     $query = CitizenDetails::query();
 
+    // Check if a search is provided
     if ($request->has('search')) {
         $search = $request->input('search');
-        $query->where('firstname', 'like', "%{$search}%")
-              ->orWhere('lastname', 'like', "%{$search}%")
-              ->orWhere('address', 'like', "%{$search}%");
+        $query->where(function ($query) use ($search) {
+            $query->where('firstname', 'like', "%{$search}%")
+                  ->orWhere('lastname', 'like', "%{$search}%")
+                  ->orWhere('address', 'like', "%{$search}%");
+        });
     }
 
-    // Fetch citizens from the database
-    $citizens = $query->get();
+    // Fetch citizens with selected columns
+    $citizens = $query->select('citizen_id', 'firstname', 'lastname', 'gender', 'address')->get();
 
-    // Capitalize the first letter of the gender
-    $citizens->each(function ($citizen) {
-        $citizen->gender = ucfirst(strtolower($citizen->gender)); // Capitalize the first letter
+    // Capitalize the gender field and return the result
+    $citizens->map(function ($citizen) {
+        $citizen->gender = ucfirst(strtolower($citizen->gender)); // Capitalize gender
+        return $citizen;
     });
 
     return response()->json($citizens);
