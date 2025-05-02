@@ -39,6 +39,7 @@ class Medicine extends Model
         'name',
         'usage_description',
         'unit',
+        'batch_no' ,
         'quantity',
         'expiration_date',
         'medicine_status',

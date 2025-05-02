@@ -25,6 +25,7 @@ class MedicineRequest extends FormRequest
             'name'                       => 'required|string|max:255',
             'usage_description'          => 'required|string|max:255',
             'unit'                       => 'required|string|max:255',
+            'batch_no'                   => 'nullable|string|max:255',
             'quantity'                   => 'required|integer',
             'expiration_date'            => 'required||date|date_format:Y-m-d',
             'medicine_status'            => 'required|string|max:255',
