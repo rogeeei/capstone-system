@@ -282,11 +282,14 @@ public function duplicateMedicineStock(Request $request, $medicine_id)
         $newMedicine = Medicine::create([
             'medicine_id' => $newId,
             'name' => $original->name,
+            'usage_description' => $original->usage_description,
+            'unit' => $original->unit,
+            'medicine_status' => $original->medicine_status ?? 'available',
+            'user_id' => $original->user_id, // assuming you want to copy this as well
             'quantity' => $validated['quantity'],
             'expiration_date' => $validated['expiration_date'],
             'date_acquired' => $validated['date_acquired'],
             'batch_no' => $validated['batch_no'] ?? null,
-            // include other fields as needed
         ]);
 
         return response()->json([
@@ -300,6 +303,7 @@ public function duplicateMedicineStock(Request $request, $medicine_id)
         ], 500);
     }
 }
+
 
 
 
