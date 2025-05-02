@@ -130,7 +130,7 @@ Route::controller(MedicineController::class)->group(function () {
     
 
     // Ensure this route is inside the group
-    Route::post('/medicine/{medicine_id}/update-stock', 'updateMedicineStock');
+    Route::post('/medicine/{medicine_id}/update-stock', 'duplicateMedicineStock');
 });
 
 

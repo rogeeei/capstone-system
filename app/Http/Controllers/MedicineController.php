@@ -260,33 +260,47 @@ public function getMonthlyMedicineAvailedByBarangay(Request $request)
 
 
 
-public function updateMedicineStock(Request $request, $medicine_id)
+public function duplicateMedicineStock(Request $request, $medicine_id)
 {
-    // Validate incoming request
     $validated = $request->validate([
         'quantity' => 'required|integer|min:1',
         'date_acquired' => 'required|date',
+        'expiration_date' => 'required|date',
+        'batch_no' => 'nullable|string',
     ]);
 
     try {
-        // Find the medicine (throws 404 if not found)
-        $medicine = Medicine::where('medicine_id', $medicine_id)->firstOrFail();
+        // Get the original medicine
+        $original = Medicine::where('medicine_id', $medicine_id)->firstOrFail();
 
-        // Update the quantity using increment (more efficient)
-        $medicine->increment('quantity', $validated['quantity']);
+        // Generate a new unique ID for the duplicate (e.g., incremented manually)
+        $lastId = Medicine::max('medicine_id'); // e.g., "100-004"
+        [$prefix, $number] = explode('-', $lastId);
+        $newId = sprintf('%s-%03d', $prefix, intval($number) + 1);
+
+        // Create new row with copied and new data
+        $newMedicine = Medicine::create([
+            'medicine_id' => $newId,
+            'name' => $original->name,
+            'quantity' => $validated['quantity'],
+            'expiration_date' => $validated['expiration_date'],
+            'date_acquired' => $validated['date_acquired'],
+            'batch_no' => $validated['batch_no'] ?? null,
+            // include other fields as needed
+        ]);
 
         return response()->json([
-            'message' => 'Medicine stock updated successfully',
-            'medicine' => $medicine->fresh(), // Ensure updated data is returned
-        ], 200);
-
+            'message' => 'Medicine duplicated as new stock entry',
+            'medicine' => $newMedicine,
+        ], 201);
     } catch (\Exception $e) {
         return response()->json([
-            'message' => 'An error occurred while updating medicine stock',
+            'message' => 'Error duplicating medicine entry',
             'error' => $e->getMessage(),
         ], 500);
     }
 }
+
 
 
 
