@@ -2,9 +2,9 @@
   'app' => 
   array (
     'name' => 'Laravel',
-    'env' => 'local',
-    'debug' => true,
-    'url' => 'http://capstone-system.test',
+    'env' => 'production',
+    'debug' => false,
+    'url' => 'https://capstone-system-production-9294.up.railway.app',
     'asset_url' => NULL,
     'timezone' => 'UTC',
     'locale' => 'en',
@@ -285,18 +285,18 @@
       array (
         'driver' => 'sqlite',
         'url' => NULL,
-        'database' => 'capstone-system',
+        'database' => 'railway',
         'prefix' => '',
         'foreign_key_constraints' => true,
       ),
       'mysql' => 
       array (
         'driver' => 'mysql',
-        'host' => '127.0.0.1',
-        'port' => '3306',
-        'database' => 'capstone-system',
+        'host' => 'ballast.proxy.rlwy.net',
+        'port' => '14081',
+        'database' => 'railway',
         'username' => 'root',
-        'password' => '',
+        'password' => 'fpGqsUeergCsaBfBBwJaJOKEhYVcbvAd',
         'unix_socket' => '',
         'charset' => 'utf8mb4',
         'collation' => 'utf8mb4_unicode_ci',
@@ -312,11 +312,11 @@
       array (
         'driver' => 'pgsql',
         'url' => NULL,
-        'host' => '127.0.0.1',
-        'port' => '3306',
-        'database' => 'capstone-system',
+        'host' => 'ballast.proxy.rlwy.net',
+        'port' => '14081',
+        'database' => 'railway',
         'username' => 'root',
-        'password' => '',
+        'password' => 'fpGqsUeergCsaBfBBwJaJOKEhYVcbvAd',
         'charset' => 'utf8',
         'prefix' => '',
         'prefix_indexes' => true,
@@ -327,11 +327,11 @@
       array (
         'driver' => 'sqlsrv',
         'url' => NULL,
-        'host' => '127.0.0.1',
-        'port' => '3306',
-        'database' => 'capstone-system',
+        'host' => 'ballast.proxy.rlwy.net',
+        'port' => '14081',
+        'database' => 'railway',
         'username' => 'root',
-        'password' => '',
+        'password' => 'fpGqsUeergCsaBfBBwJaJOKEhYVcbvAd',
         'charset' => 'utf8',
         'prefix' => '',
         'prefix_indexes' => true,
@@ -381,7 +381,7 @@
       array (
         'driver' => 'local',
         'root' => 'C:\\laragon\\www\\capstone-system\\storage\\app/public',
-        'url' => 'http://capstone-system.test/storage',
+        'url' => 'https://capstone-system-production-9294.up.railway.app/storage',
         'visibility' => 'public',
         'throw' => false,
       ),
@@ -424,7 +424,7 @@
     'default' => 'stack',
     'deprecations' => 
     array (
-      'channel' => 'null',
+      'channel' => NULL,
       'trace' => false,
     ),
     'channels' => 
@@ -459,7 +459,7 @@
         'url' => NULL,
         'username' => 'Laravel Log',
         'emoji' => ':boom:',
-        'level' => 'critical',
+        'level' => 'debug',
         'replace_placeholders' => true,
       ),
       'papertrail' => 
@@ -661,7 +661,7 @@
       2 => '127.0.0.1',
       3 => '127.0.0.1:8000',
       4 => '::1',
-      5 => 'capstone-system.test',
+      5 => 'capstone-system-production-9294.up.railway.app',
     ),
     'guard' => 
     array (
