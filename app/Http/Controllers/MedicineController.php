@@ -35,30 +35,34 @@ public function index()
 
 public function getAvailableMedicines()
 {
-    $userBarangay = auth()->user()->brgy; // Get authenticated user's barangay
+    $userBarangay = auth()->user()->brgy;
 
-    // ✅ Retrieve all medicines where ANY user from the same barangay created them, and quantity is greater than 0
+    // Step 1: Get all valid medicines from the same barangay with quantity > 0
     $medicines = Medicine::whereHas('user', function ($query) use ($userBarangay) {
-            $query->where('users.brgy', $userBarangay); // Fetch medicines by barangay
+            $query->where('users.brgy', $userBarangay);
         })
-        ->where('quantity', '>', 0) // ✅ Exclude medicines with 0 quantity
+        ->where('quantity', '>', 0)
+        ->orderBy('created_at', 'asc') // Important: to get the oldest entry first
         ->get();
 
-    // ✅ Modify `medicine_status` dynamically (DO NOT save in DB inside GET requests)
-    $medicines->transform(function ($medicine) {
-        $medicine->medicine_status = 'Available'; // If it's in the list, it must have stock
+    // Step 2: Filter to keep only the first medicine per unique name
+    $uniqueMedicines = $medicines->unique('name')->values();
+
+    // Step 3: Add status (without modifying DB)
+    $uniqueMedicines->transform(function ($medicine) {
+        $medicine->medicine_status = 'Available';
         return $medicine;
     });
 
-    // ✅ Return medicines from the same barangay, excluding 0-quantity items
-    return response()->json($medicines);
+    return response()->json($uniqueMedicines);
 }
+
 
 
 public function getMedicinesByBarangay()
 {
     try {
-        // Join medicine with users and fetch all location info
+        // Join medicine with users and fetch all location info, including expiration_date
         $medicinesByBarangay = User::join('medicine', 'users.user_id', '=', 'medicine.user_id')
             ->select(
                 'users.brgy as barangay',
@@ -66,6 +70,7 @@ public function getMedicinesByBarangay()
                 'users.province as province',
                 'medicine.name as medicine_name',
                 'medicine.unit as unit',
+                'medicine.expiration_date as expiration_date', // Added expiration date
                 DB::raw('SUM(medicine.quantity) as total_quantity')
             )
             ->whereNotNull('users.brgy')
@@ -74,7 +79,8 @@ public function getMedicinesByBarangay()
                 'users.municipality',
                 'users.province',
                 'medicine.name',
-                'medicine.unit'
+                'medicine.unit',
+                'medicine.expiration_date' // Added expiration_date to the groupBy
             )
             ->orderBy('users.brgy')
             ->get();
@@ -102,6 +108,7 @@ public function getMedicinesByBarangay()
                 'name' => $item->medicine_name,
                 'total_quantity' => $item->total_quantity,
                 'unit' => $item->unit,
+                'expiration_date' => $item->expiration_date, // Added expiration date
             ];
         }
 
@@ -113,6 +120,7 @@ public function getMedicinesByBarangay()
         ], 500);
     }
 }
+
 
 
 

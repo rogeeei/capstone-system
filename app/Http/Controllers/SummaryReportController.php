@@ -10,6 +10,8 @@ use App\Models\Services;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Medicine;
+use Carbon\Carbon;
+
 
 
 
@@ -417,8 +419,24 @@ public function getBarangayReport(Request $request)
 {
     try {
         $user = auth()->user();
-        
-        // ✅ Super admin: Get barangay, municipality, and province from URL parameters
+
+        // ✅ Get date range (optional)
+        $from = $request->query('from');
+        $to = $request->query('to');
+
+        if ($from && $to) {
+            try {
+                $from = Carbon::parse($from)->startOfDay();
+                $to = Carbon::parse($to)->endOfDay();
+            } catch (\Exception $e) {
+                return response()->json([
+                    "success" => false,
+                    "error" => "Invalid date format for 'from' or 'to'. Use YYYY-MM-DD."
+                ], 400);
+            }
+        }
+
+        // ✅ Determine location context
         if ($user->role === 'super admin') {
             $province = $request->query('province');
             $municipality = $request->query('municipality');
@@ -431,7 +449,6 @@ public function getBarangayReport(Request $request)
                 ], 400);
             }
         } else {
-            // ✅ Other users: Get barangay, municipality, and province from the authenticated user's data
             $barangay = $user->brgy ?? null;
             $municipality = $user->municipality ?? null;
             $province = $user->province ?? null;
@@ -444,7 +461,7 @@ public function getBarangayReport(Request $request)
             }
         }
 
-        // ✅ Ensure that all citizens belong to the same province, municipality, and barangay
+        // ✅ Total Population
         $totalPopulation = CitizenDetails::where('barangay', $barangay)
             ->where('municipality', $municipality)
             ->where('province', $province)
@@ -465,7 +482,7 @@ public function getBarangayReport(Request $request)
         ->groupBy('gender')
         ->pluck('count', 'gender');
 
-        // ✅ Age Distribution
+        // ✅ Age Groups
         $ageGroups = CitizenDetails::selectRaw("
             CASE 
                 WHEN TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) BETWEEN 0 AND 2 THEN 'Infant'
@@ -485,7 +502,7 @@ public function getBarangayReport(Request $request)
         ->groupBy('age_group')
         ->pluck('count', 'age_group');
 
-        // ✅ BMI Classification
+        // ✅ BMI
         $bmiData = CitizenDetails::where('barangay', $barangay)
             ->where('municipality', $municipality)
             ->where('province', $province)
@@ -505,27 +522,46 @@ public function getBarangayReport(Request $request)
             })
             ->map(fn($group) => $group->count());
 
-        // ✅ Medicine Availment (Count each availment)
-        $medicineData = DB::table('citizen_medicine')
+        // ✅ Medicine Availment
+        $medicineQuery = DB::table('citizen_medicine')
             ->join('medicine', 'citizen_medicine.medicine_id', '=', 'medicine.medicine_id')
             ->join('citizen_details', 'citizen_medicine.citizen_id', '=', 'citizen_details.citizen_id')
             ->where('citizen_details.barangay', $barangay)
             ->where('citizen_details.municipality', $municipality)
-            ->where('citizen_details.province', $province)
+            ->where('citizen_details.province', $province);
+
+        if ($from && $to) {
+            $medicineQuery->whereBetween('citizen_medicine.created_at', [$from, $to]);
+        }
+
+        $medicineData = $medicineQuery
             ->selectRaw("medicine.name AS medicine_name, COUNT(citizen_medicine.citizen_id) AS total_availed")
             ->groupBy('medicine.name')
             ->get();
 
-        // ✅ Service Availment (Count each availment, even if the citizen is the same)
-        $serviceData = Transaction::join('services', 'transactions.service_id', '=', 'services.id')
+        // ✅ Service Availment
+        $serviceQuery = Transaction::join('services', 'transactions.service_id', '=', 'services.id')
             ->join('citizen_details', 'transactions.citizen_id', '=', 'citizen_details.citizen_id')
             ->where('citizen_details.barangay', $barangay)
             ->where('citizen_details.municipality', $municipality)
-            ->where('citizen_details.province', $province)
-            ->selectRaw("services.name as service_name, COUNT(transactions.citizen_id) as total_availed") // Count all availments
+            ->where('citizen_details.province', $province);
+
+        if ($from && $to) {
+            $serviceQuery->whereBetween('transactions.created_at', [$from, $to]);
+        }
+
+        $serviceData = $serviceQuery
+            ->selectRaw("services.name as service_name, COUNT(transactions.citizen_id) as total_availed")
             ->groupBy('services.name')
             ->get();
 
+        // ✅ Log the queries for debugging
+        \Log::info('Medicine Query:', [$medicineQuery->toSql()]);
+        \Log::info('Medicine Query Parameters:', [$medicineQuery->getBindings()]);
+        \Log::info('Service Query:', [$serviceQuery->toSql()]);
+        \Log::info('Service Query Parameters:', [$serviceQuery->getBindings()]);
+
+        // ✅ Final JSON response
         return response()->json([
             "success" => true,
             "message" => "Comprehensive report for barangay: $barangay",
@@ -537,7 +573,7 @@ public function getBarangayReport(Request $request)
             "ageGroups" => $ageGroups,
             "bmiData" => $bmiData,
             "medicineData" => $medicineData,
-            "serviceData" => $serviceData
+            "serviceData" => $serviceData,
         ]);
     } catch (\Exception $e) {
         return response()->json([
@@ -549,6 +585,8 @@ public function getBarangayReport(Request $request)
         ], 500);
     }
 }
+
+
 
 
 

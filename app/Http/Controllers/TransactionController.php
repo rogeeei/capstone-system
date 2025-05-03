@@ -136,23 +136,48 @@ public function store(Request $request)
     }
 }
 
-public function getOverallMedicineAvailed()
+public function getOverallMedicineAvailed(Request $request)
 {
-    $medicines = DB::table('transactions')
+    // Parse date range from query parameters
+    $from = $request->query('from');
+    $to = $request->query('to');
+
+    $query = DB::table('transactions')
         ->join('citizen_medicine', 'transactions.id', '=', 'citizen_medicine.transaction_id')
         ->join('medicine', 'citizen_medicine.medicine_id', '=', 'medicine.medicine_id')
-        ->join('citizen_details', 'citizen_medicine.citizen_id', '=', 'citizen_details.citizen_id') // Ensure you join citizen details if needed
-        ->select('medicine.name', DB::raw('COUNT(citizen_medicine.id) as total_availed')) // Count total availments
+        ->join('citizen_details', 'citizen_medicine.citizen_id', '=', 'citizen_details.citizen_id')
+        ->select('medicine.name', DB::raw('COUNT(citizen_medicine.id) as total_availed'))
         ->groupBy('medicine.name')
-        ->orderByDesc('total_availed')
-        ->get();
+        ->orderByDesc('total_availed');
+
+    // Apply date filter if both 'from' and 'to' are provided
+    if ($from && $to) {
+        try {
+            $fromDate = \Carbon\Carbon::parse($from)->startOfDay();
+            $toDate = \Carbon\Carbon::parse($to)->endOfDay();
+
+            $query->whereBetween('transactions.created_at', [$fromDate, $toDate]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Invalid date format for "from" or "to". Use YYYY-MM-DD.'
+            ], 400);
+        }
+    }
+
+    $medicines = $query->get();
 
     if ($medicines->isEmpty()) {
         return response()->json(['message' => 'No medicine availment data found'], 404);
     }
 
-    return response()->json($medicines);
+    return response()->json([
+        'success' => true,
+        'data' => $medicines
+    ]);
 }
+
+
 
 public function show(Request $request, $citizen_id)
 {

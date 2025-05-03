@@ -199,15 +199,49 @@ public function assignServiceToBarangay(Request $request)
     }
 
     
-public function getServiceAvailmentStats()
+public function getServiceAvailmentStats(Request $request)
 {
-    $serviceStats = DB::table('transactions')
+    // Parse date range from query parameters
+    $from = $request->query('from');
+    $to   = $request->query('to');
+
+    $query = DB::table('transactions')
         ->join('services', 'transactions.service_id', '=', 'services.id')
         ->select('services.name', DB::raw('COUNT(DISTINCT transactions.citizen_id) as citizen_count'))
         ->groupBy('services.name')
-        ->get();
+        ->orderByDesc('citizen_count');
 
-    return response()->json($serviceStats);
+    // Apply date filter if both 'from' and 'to' are provided
+    if ($from && $to) {
+        try {
+            $fromDate = \Carbon\Carbon::parse($from)->startOfDay();
+            $toDate   = \Carbon\Carbon::parse($to)  ->endOfDay();
+
+            $query->whereBetween('transactions.created_at', [$fromDate, $toDate]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'Invalid date format for "from" or "to". Use YYYY-MM-DD.'
+            ], 400);
+        }
+    }
+
+    $serviceStats = $query->get();
+
+    if ($serviceStats->isEmpty()) {
+        return response()->json([
+            'success' => true,
+            'data'    => [],
+            'message' => 'No service availment data found for the given range'
+        ], 404);
+    }
+
+    return response()->json([
+        'success' => true,
+        'data'    => $serviceStats
+    ]);
 }
+
+
 
 }
